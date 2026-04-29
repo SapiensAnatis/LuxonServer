@@ -10,7 +10,7 @@ variables:
   stage: build
   artifacts:
     paths:
-      - build/luxon_server*
+      - build/luxon_server.*
     expire_in: 1 week
 
 # RelWithDebInfo static build amd64 via alpine
@@ -88,6 +88,7 @@ strip_binaries:
   before_script:
     - apt-get update && apt-get install -y llvm
   script:
+    - rm -rf build/*.vcxproj* build/*.dir
     - |
       for file in build/*rel+debinfo*; do
         if [ -f "$file" ]; then
