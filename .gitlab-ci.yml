@@ -91,7 +91,7 @@ build:freebsd:amd64:
       -DCMAKE_CXX_FLAGS="--target=x86_64-unknown-freebsd15.0 --sysroot=$SYSROOT"
       -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld --target=x86_64-unknown-freebsd15.0 --sysroot=$SYSROOT"
     - cmake --build build
-    - mv build/luxon_server build/luxon_server.freebsd.rel+debinfo.amd64
+    - mv build/luxon_server build/luxon_server.libc.rel+debinfo.freebsd-x86_64
 
 # RelWithDebInfo build amd64 via MSVC
 build:msvc:amd64:
