@@ -37,24 +37,29 @@ if (MSVC)
     set(LUXON_USE_EMBED_RESOURCE ON)
 endif()
 
-# Linux/Windows get to use mbedtls, spdlog and setting storage database support
-if (CMAKE_SYSTEM_NAME STREQUAL Linux OR CMAKE_SYSTEM_NAME STREQUAL Windows)
-    # Generic configuration
+# Linux/Windows/FreeBSD get to use sanmake, mbedtls, spdlog and setting storage database support
+if (CMAKE_SYSTEM_NAME MATCHES "^(Linux|Windows|FreeBSD|Darwin)$")
     add_subdirectory(Luxon)
 
-    CPMAddPackage("gl:niansa/sanmake@1.0")
-
     option(LUXON_SERVER_USE_SPDLOG "Use spdlog for Luxon server" ON)
+    option(LUXON_SERVER_USE_SANMAKE "Use basic sanitizers for Luxon server" ON)
     option(LUXON_SERVER_ENABLE_SETTINGS_DATABASE "Build Luxon Server with settings storage database support enabled" ON)
 else()
     # Compatible configuration
     set(LUXON_USE_TOMCRYPT ON CACHE BOOL "Force use of libtomcrypt" FORCE)
 
     add_subdirectory(Luxon)
-    add_library(sanmake INTERFACE)
 
     set(LUXON_SERVER_USE_SPDLOG OFF)
+    set(LUXON_SERVER_USE_SANMAKE OFF)
     set(LUXON_SERVER_ENABLE_SETTINGS_DATABASE OFF)
+endif()
+
+# Include sanmake
+if (LUXON_SERVER_USE_SANMAKE)
+    CPMAddPackage("gl:niansa/sanmake@1.0")
+else()
+    add_library(sanmake INTERFACE)
 endif()
 
 # Include spdlog
@@ -190,6 +195,10 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL Windows)
     target_link_libraries(luxon_server_lib PRIVATE ws2_32)
 elseif (CMAKE_SYSTEM_NAME STREQUAL Nintendo3DS)
     target_compile_definitions(luxon_server_lib PRIVATE PLATFORM_3DS)
+elseif (CMAKE_SYSTEM_NAME STREQUAL FreeBSD)
+    target_compile_definitions(luxon_server_lib PRIVATE PLATFORM_FREEBSD)
+elseif (CMAKE_SYSTEM_NAME STREQUAL Darwin)
+    target_compile_definitions(luxon_server_lib PRIVATE PLATFORM_MACOS)
 endif()
 
 
