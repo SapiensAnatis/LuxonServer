@@ -127,6 +127,8 @@ Once this is set, the game will connect to Luxon Server thinking it is the offic
 
 The server is primarily developed for Linux and Windows. There is also full support (excluding plugins) for Nintendo 3DS (because why not).
 
+I sometimes test compilation under Mac OS and add Mac OS binaries to some releases, though this is not continuously tested.
+
 ## FAQ
 
 **Q:** Why is the server completely single-threaded?\
