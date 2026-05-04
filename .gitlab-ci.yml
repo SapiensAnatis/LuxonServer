@@ -47,6 +47,39 @@ build:debian:aarch64:
     - cmake --build build
     - mv build/luxon_server build/luxon_server.glibc.rel+debinfo.linux-aarch64
 
+# RelWithDebInfo static build i686 via Alpine
+build:alpine:i686:
+  extends: .build_template
+  image: i386/alpine:3
+  before_script:
+    - apk update && apk add build-base cmake ninja git linux-headers
+  script:
+    - cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXE_LINKER_FLAGS="-static" -DLUXON_SERVER_USE_SANMAKE=OFF
+    - cmake --build build
+    - mv build/luxon_server build/luxon_server.musl-static.rel+debinfo.linux-i686
+
+# RelWithDebInfo static build armhf via Debian Trixie + Bootlin uclibc Toolchain
+build:bootlin:armhf:
+  extends: .build_template
+  image: debian:trixie
+  before_script:
+    - apt-get update && apt-get install -y build-essential cmake ninja-build git wget xz-utils
+    - wget -q https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--uclibc--stable-2025.08-1.tar.xz
+    - mkdir -p /opt/toolchain
+    - tar -xf armv7-eabihf--uclibc--stable-2025.08-1.tar.xz -C /opt/toolchain --strip-components=1
+  script:
+    - export PATH=/opt/toolchain/bin:$PATH
+    - >
+      cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      -DCMAKE_SYSTEM_NAME=Linux
+      -DCMAKE_SYSTEM_PROCESSOR=armv7
+      -DCMAKE_C_COMPILER=arm-buildroot-linux-uclibcgnueabihf-gcc
+      -DCMAKE_CXX_COMPILER=arm-buildroot-linux-uclibcgnueabihf-g++
+      -DCMAKE_EXE_LINKER_FLAGS="-static"
+      -DLUXON_SERVER_USE_SANMAKE=OFF
+    - cmake --build build
+    - mv build/luxon_server build/luxon_server.uclibc-static.rel+debinfo.linux-armhf
+
 # RelWithDebInfo build amd64 via llvm-mingw
 build:mingw:amd64:
   extends: .build_template
