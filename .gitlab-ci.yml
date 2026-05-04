@@ -151,6 +151,31 @@ build:openbsd:amd64:
     - cmake --build build
     - mv build/luxon_server build/luxon_server.libc.rel+debinfo.openbsd-x86_64
 
+# RelWithDebInfo build aarch64 for macOS (Darwin) via Debian Trixie + macOS SDK
+build:macos:aarch64:
+  extends: .build_template
+  image: debian:trixie
+  before_script:
+    - apt-get update && apt-get install -y clang lld llvm cmake ninja-build git wget xz-utils
+    - wget -q -O MacOSX.sdk.tar.xz "$MACOS_SDK_URL"
+    - tar -xf MacOSX.sdk.tar.xz --warning=no-unknown-keyword
+  script:
+    - export SYSROOT=$PWD/MacOSX.sdk
+    - >
+      cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      -DCMAKE_SYSTEM_NAME=Darwin
+      -DCMAKE_SYSTEM_PROCESSOR=arm64
+      -DCMAKE_C_COMPILER=clang
+      -DCMAKE_CXX_COMPILER=clang++
+      -DCMAKE_C_FLAGS="--target=arm64-apple-darwin"
+      -DCMAKE_CXX_FLAGS="--target=arm64-apple-darwin"
+      -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"
+      -DCMAKE_OSX_SYSROOT=$SYSROOT
+      -DCMAKE_AR=/usr/bin/llvm-ar
+      -DCMAKE_RANLIB=/usr/bin/llvm-ranlib
+    - cmake --build build
+    - mv build/luxon_server build/luxon_server.macosx-sdk.rel+debinfo.darwin-aarch64
+
 # RelWithDebInfo build x86 (32-bit) for Windows 2000 via GCC MinGW-w64
 build:mingw:win2k_x86:
   extends: .build_template
