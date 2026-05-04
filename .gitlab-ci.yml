@@ -93,6 +93,49 @@ build:freebsd:amd64:
     - cmake --build build
     - mv build/luxon_server build/luxon_server.libc.rel+debinfo.freebsd-x86_64
 
+# RelWithDebInfo build amd64 via Debian Trixie (OpenBSD 7.8 Sysroot)
+build:openbsd:amd64:
+  extends: .build_template
+  image: debian:trixie
+  before_script:
+    - apt-get update && apt-get install -y clang lld cmake ninja-build git wget tar
+    - mkdir -p openbsd-sysroot
+    - wget https://cdn.openbsd.org/pub/OpenBSD/7.8/amd64/base78.tgz
+    - wget https://cdn.openbsd.org/pub/OpenBSD/7.8/amd64/comp78.tgz
+    - tar -xzf base78.tgz -C openbsd-sysroot
+    - tar -xzf comp78.tgz -C openbsd-sysroot
+  script:
+    - export SYSROOT=$PWD/openbsd-sysroot
+    - >
+      cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      -DCMAKE_SYSTEM_NAME=OpenBSD
+      -DCMAKE_SYSTEM_PROCESSOR=amd64
+      -DCMAKE_C_COMPILER=clang
+      -DCMAKE_CXX_COMPILER=clang++
+      -DCMAKE_C_FLAGS="--target=x86_64-unknown-openbsd7.8 --sysroot=$SYSROOT"
+      -DCMAKE_CXX_FLAGS="--target=x86_64-unknown-openbsd7.8 --sysroot=$SYSROOT"
+      -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld --target=x86_64-unknown-openbsd7.8 --sysroot=$SYSROOT"
+    - cmake --build build
+    - mv build/luxon_server build/luxon_server.libc.rel+debinfo.openbsd-x86_64
+
+# RelWithDebInfo build x86 (32-bit) for Windows 2000 via GCC MinGW-w64
+build:mingw:win2k_x86:
+  extends: .build_template
+  image: debian:trixie
+  before_script:
+    - apt-get update && apt-get install -y cmake ninja-build git g++-mingw-w64-i686 g++
+  script:
+    - >
+      cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      -DCMAKE_SYSTEM_NAME=Windows
+      -DCMAKE_C_COMPILER=i686-w64-mingw32-gcc
+      -DCMAKE_CXX_COMPILER=i686-w64-mingw32-g++
+      -DCMAKE_CXX_FLAGS="-fno-threadsafe-statics"
+      -DCMAKE_EXE_LINKER_FLAGS="-static -Wl,--subsystem,console:5.00"
+      -DLUXON_USE_EMBED_RESOURCE=ON
+    - cmake --build build
+    - mv build/luxon_server.exe build/luxon_server.win2k.rel+debinfo.exe
+
 # RelWithDebInfo build amd64 via MSVC
 build:msvc:amd64:
   extends: .build_template
