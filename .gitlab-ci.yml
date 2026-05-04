@@ -31,7 +31,7 @@ build:debian:amd64:
   before_script:
     - apt-get update && apt-get install -y build-essential cmake ninja-build git libmbedtls-dev libspdlog-dev
   script:
-    - cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    - cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_UNITY_BUILD=ON
     - cmake --build build
     - mv build/luxon_server build/luxon_server.glibc.rel+debinfo.linux-x86_64
 
@@ -43,7 +43,7 @@ build:debian:aarch64:
     - dpkg --add-architecture arm64
     - apt-get update && apt-get install -y build-essential crossbuild-essential-arm64 cmake ninja-build git pkg-config libmbedtls-dev:arm64 libspdlog-dev:arm64
   script:
-    - cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
+    - cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_UNITY_BUILD=ON -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
     - cmake --build build
     - mv build/luxon_server build/luxon_server.glibc.rel+debinfo.linux-aarch64
 
