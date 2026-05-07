@@ -118,7 +118,7 @@ Once this is set, the game will connect to Luxon Server thinking it is the offic
 
 ## Features
 
-* **LoadBalancing Logic:** Full implementation of the Name/Master/Game server flow.
+* **Load Balancing Logic:** Full implementation of the Name/Master/Game server flow.
 * **Web Dashboard:** An embedded HTTP server (default port 5088) provides a real-time monitor. It shows active connections, packet loss, round-trip times, and a visual graph of server load/busy time at path `/stats`.
 * **Peer Persistence:** Handles player authentication tokens and state transfer between Master and Game servers.
 * **Plugin System (Optional):** If you need custom server-side logic, Luxon supports plugins written in C++ using coroutines. This is disabled by default in CMake (LUXON_SERVER_ENABLE_PLUGINS=OFF) to keep the build lightweight, strictly single-threaded and coroutine-free.
@@ -134,7 +134,7 @@ I sometimes test compilation under Mac OS and add Mac OS binaries to some releas
 **Q:** Why is the server completely single-threaded?\
 **A:** Luxon Server is NOT supposed to be used as an alternative the the official Photon Server SDK. That means it doesn't have to handle loads big enough to saturate a single core even on very low-end systems. I have estimated the *New Nintendo 3DS* as a server to be able to handle at least 10, probably up to 30 concurrently active players! Plus, strict single-threading keeps the codebase simple.
 
-**Q:** Are there any plans on implementing *actual* load balancing (not just the protocol) across multiple systems/processes?\
+**Q:** Are there any plans on implementing *actual* load balancing (not just the protocol part of it) across multiple systems/processes?\
 **A:** I have looked into spawning more processes running GameServer instances, as an alternative to multi-threading. However, I am strictly against supporting load balancing across different systems. I do NOT want to agitate Exit Games by releasing a competitive product.
 
 **Q:** Are you going to write bindings for writing plugins in C#, Python, Javascript, ...?\
