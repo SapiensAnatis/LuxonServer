@@ -38,7 +38,7 @@ if (MSVC)
 endif()
 
 # Linux/Windows/FreeBSD get to use sanmake, mbedtls, spdlog and setting storage database support
-if (CMAKE_SYSTEM_NAME MATCHES "^(Linux|Windows|FreeBSD|Darwin)$")
+if (CMAKE_SYSTEM_NAME MATCHES "^(Linux|Windows|FreeBSD|OpenBSD|Darwin)$")
     add_subdirectory(Luxon)
 
     option(LUXON_SERVER_USE_SPDLOG "Use spdlog for Luxon server" ON)
