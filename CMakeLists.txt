@@ -119,7 +119,7 @@ target_link_libraries(luxon_server_lib PRIVATE
 )
 
 if (WASI)
-    target_link_libraries(luxon_server_lib PRIVATE wasm_sockets)
+    target_link_libraries(luxon_server_lib PUBLIC wasm_sockets)
 endif()
 
 add_executable(luxon_server src/main.cpp)

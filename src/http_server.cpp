@@ -54,18 +54,24 @@ INCBIN(style_css, LUXON_SERVER_WEB_ROOT "/style.css");
 #define GET_RESOURCE(name) {incbin_##name##_start, static_cast<size_t>(reinterpret_cast<intptr_t>(incbin_##name##_end - incbin_##name##_start))}
 #endif
 
+#ifdef __wasm__
+#define FCNTL socket_fcntl
+#else
+#define FCNTL fcntl
+#endif
+
 using json = nlohmann::json;
 using namespace luxon::ser;
 
 namespace server {
 namespace {
 void set_nonblocking(int fd) {
-#if defined(_WIN32)
+#ifdef _WIN32
     u_long mode = 1;
     ioctlsocket(fd, FIONBIO, &mode);
 #else
-    int flags = fcntl(fd, F_GETFL, 0);
-    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    int flags = FCNTL(fd, F_GETFL, 0);
+    FCNTL(fd, F_SETFL, flags | O_NONBLOCK);
 #endif
 }
 
