@@ -9,6 +9,17 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# WASI-SDK support code
+if (WASI)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections -Wl,--strip-all")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections -Wl,--strip-all")
+
+    add_compile_options(-fwasm-exceptions "SHELL:-mllvm -wasm-enable-sjlj" "SHELL:-mllvm -wasm-use-legacy-eh=false")
+    add_compile_definitions(-D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL)
+    add_link_options("SHELL:-mllvm -wasm-use-legacy-eh=false" -Wl,--export=malloc -Wl,--export=free)
+    link_libraries(-fwasm-exceptions -lunwind -lsetjmp -lwasi-emulated-process-clocks -lwasi-emulated-signal)
+endif()
+
 include(cmake/CPM.cmake)
 
 option(LUXON_SERVER_ENABLE_WEBSERVER "Enable the built-in webserver" ON)
@@ -27,13 +38,9 @@ if (NOT LUXON_SERVER_ENABLE_PLUGINS AND NOT WIN32 AND NOT LUXON_SERVER_TRACY)
     add_compile_definitions(thread_local=)
 endif()
 
-# MSVC-specific configurations
-if (MSVC)
-    # commoncpp gets compiled without ASAN and includes <vector>
-    # This causes issues during linking, so we have to turn it off
+# MSVC and WASI -specific configurations
+if (MSVC OR WASI)
     set(SANMAKE_ASAN OFF)
-
-    # incbin.h is not supported on MSVC
     set(LUXON_USE_EMBED_RESOURCE ON)
 endif()
 
@@ -110,6 +117,10 @@ target_compile_definitions(luxon_server_lib PRIVATE SQLITE_CUSTOM_INCLUDE=sqlite
 target_link_libraries(luxon_server_lib PRIVATE
     $<$<CONFIG:Debug>:luxon_visualizer>
 )
+
+if (WASI)
+    target_link_libraries(luxon_server_lib PRIVATE wasm_sockets)
+endif()
 
 add_executable(luxon_server src/main.cpp)
 target_link_libraries(luxon_server luxon_server_lib)
