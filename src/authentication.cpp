@@ -90,6 +90,7 @@ ser::OperationResponseMessage authenticate(ServerManager& server_manager, Peer& 
         const std::string *version_ptr = params->get<DictKeyCodes::LoadBalancing::AppVersion>();
         const std::string app_version = version_ptr ? *version_ptr : "(poor attempt at emulating null app version)";
 
+        peer.log->info("Client is using app {} (version {})", app_id, version_ptr ? *version_ptr : "(null)");
         p->app = App::get(server_manager, app_id, app_version);
 
         // Make sure app is available

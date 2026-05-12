@@ -11,10 +11,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # WASI-SDK support code
 if (WASI)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections -Wl,--strip-all")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections -Wl,--strip-all")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections")
 
-    add_compile_options(-fwasm-exceptions "SHELL:-mllvm -wasm-enable-sjlj" "SHELL:-mllvm -wasm-use-legacy-eh=false")
+    add_compile_options(-fwasm-exceptions "SHELL:-mllvm -wasm-use-legacy-eh=false")
     add_compile_definitions(-D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL)
     add_link_options("SHELL:-mllvm -wasm-use-legacy-eh=false" -Wl,--export=malloc -Wl,--export=free)
     link_libraries(-fwasm-exceptions -lunwind -lsetjmp -lwasi-emulated-process-clocks -lwasi-emulated-signal)
