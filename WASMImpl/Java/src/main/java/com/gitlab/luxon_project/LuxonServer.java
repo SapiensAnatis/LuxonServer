@@ -235,18 +235,32 @@ public class LuxonServer {
                     InetAddress.getByAddress(mem.readBytes(addrPtr + 8, 16)) :
                     InetAddress.getByAddress(mem.readBytes(addrPtr + 4, 4));
 
-                if (h.isUdp) {
-                    h.datagramChannel = DatagramChannel.open();
-                    h.datagramChannel.configureBlocking(!h.nonBlocking);
-                    h.datagramChannel.bind(new InetSocketAddress(addr, port));
-                } else {
-                    h.isServer = true;
-                    h.serverChannel = ServerSocketChannel.open();
-                    h.serverChannel.configureBlocking(!h.nonBlocking);
-                    h.serverChannel.bind(new InetSocketAddress(addr, port));
+                try {
+                    if (h.isUdp) {
+                        h.datagramChannel = DatagramChannel.open();
+                        h.datagramChannel.configureBlocking(!h.nonBlocking);
+                        h.datagramChannel.bind(new InetSocketAddress(addr, port));
+                    } else {
+                        h.isServer = true;
+                        h.serverChannel = ServerSocketChannel.open();
+                        h.serverChannel.configureBlocking(!h.nonBlocking);
+                        h.serverChannel.bind(new InetSocketAddress(addr, port));
+                    }
+                } catch (java.nio.channels.UnsupportedAddressTypeException e) {
+                    InetAddress fallback = getFallbackAddress(addr);
+                    if (fallback != null) {
+                        System.err.println("WARNING: Unsupported address type for bind. Falling back from " + addr + " to " + fallback);
+                        if (h.isUdp) {
+                            h.datagramChannel.bind(new InetSocketAddress(fallback, port));
+                        } else {
+                            h.serverChannel.bind(new InetSocketAddress(fallback, port));
+                        }
+                    } else {
+                        throw e;
+                    }
                 }
                 return new long[] { 0 };
-            } catch (IOException e) {
+            } catch (Exception e) {
                 return new long[] { -1L };
             }
         }));
@@ -318,18 +332,34 @@ public class LuxonServer {
                     InetAddress.getByAddress(mem.readBytes(addrPtr + 8, 16)) :
                     InetAddress.getByAddress(mem.readBytes(addrPtr + 4, 4));
 
-                if (h.isUdp) {
-                    h.datagramChannel = DatagramChannel.open();
-                    h.datagramChannel.configureBlocking(!h.nonBlocking);
-                    h.datagramChannel.connect(new InetSocketAddress(addr, port));
-                    return new long[] { 0 };
-                } else {
-                    h.socketChannel = SocketChannel.open();
-                    h.socketChannel.configureBlocking(!h.nonBlocking);
-                    boolean success = h.socketChannel.connect(new InetSocketAddress(addr, port));
-                    return new long[] { success ? 0 : -1L };
+                try {
+                    if (h.isUdp) {
+                        h.datagramChannel = DatagramChannel.open();
+                        h.datagramChannel.configureBlocking(!h.nonBlocking);
+                        h.datagramChannel.connect(new InetSocketAddress(addr, port));
+                        return new long[] { 0 };
+                    } else {
+                        h.socketChannel = SocketChannel.open();
+                        h.socketChannel.configureBlocking(!h.nonBlocking);
+                        boolean success = h.socketChannel.connect(new InetSocketAddress(addr, port));
+                        return new long[] { success ? 0 : -1L };
+                    }
+                } catch (java.nio.channels.UnsupportedAddressTypeException e) {
+                    InetAddress fallback = getFallbackAddress(addr);
+                    if (fallback != null) {
+                        System.err.println("WARNING: Unsupported address type for connect. Falling back from " + addr + " to " + fallback);
+                        if (h.isUdp) {
+                            h.datagramChannel.connect(new InetSocketAddress(fallback, port));
+                            return new long[] { 0 };
+                        } else {
+                            boolean success = h.socketChannel.connect(new InetSocketAddress(fallback, port));
+                            return new long[] { success ? 0 : -1L };
+                        }
+                    } else {
+                        throw e; // Rethrow if we can't formulate a valid fallback
+                    }
                 }
-            } catch (IOException e) {
+            } catch (Exception e) {
                 return new long[] { -1L };
             }
         }));
@@ -742,6 +772,49 @@ public class LuxonServer {
         }));
 
         return env;
+    }
+
+private static InetAddress getFallbackAddress(InetAddress addr) {
+        try {
+            byte[] raw = addr.getAddress();
+            if (raw.length == 16) {
+                // Check if it's an IPv4-mapped IPv6 (::ffff:x.x.x.x)
+                if (isIpv4MappedIpv6(raw)) {
+                    return InetAddress.getByAddress(extractMappedIpv4(raw));
+                }
+
+                // Check for IPv6 ANY (::) -> Translate to IPv4 ANY (0.0.0.0)
+                boolean isAny = true;
+                for (byte b : raw) {
+                    if (b != 0) {
+                        isAny = false;
+                        break;
+                    }
+                }
+                if (isAny) {
+                    return InetAddress.getByAddress(new byte[]{0, 0, 0, 0});
+                }
+
+                // Check for IPv6 Loopback (::1) -> Translate to IPv4 Loopback (127.0.0.1)
+                boolean isLoopback = true;
+                for (int i = 0; i < 15; i++) {
+                    if (raw[i] != 0) {
+                        isLoopback = false;
+                        break;
+                    }
+                }
+                if (isLoopback && raw[15] == 1) {
+                    return InetAddress.getByAddress(new byte[]{127, 0, 0, 1});
+                }
+
+            } else if (raw.length == 4) {
+                // Try promoting IPv4 up to IPv6 as a last resort
+                return InetAddress.getByAddress(ipv4ToMappedIpv6(raw));
+            }
+        } catch (UnknownHostException e) {
+            // Ignore, will return null
+        }
+        return null;
     }
 
     private static long[] doSend(Instance instance, int sockfd, int bufPtr, int len, int flags, int destAddrPtr, int addrlen) {
