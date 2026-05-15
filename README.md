@@ -125,9 +125,21 @@ Once this is set, the game will connect to Luxon Server thinking it is the offic
 
 ## Platform Support
 
-The server is primarily developed for Linux and Windows. There is also full support (excluding plugins) for Nintendo 3DS (because why not).
+Luxon Server is highly portable. It natively runs on: 
+ * Linux
+ * Windows (down to Vista)
+ * Mac OS
+ * FreeBSD
+ * OpenBSD
+ * Nintendo 3DS (devkitpro)
 
-I sometimes test compilation under Mac OS and add Mac OS binaries to some releases, though this is not continuously tested.
+It can additionally target WASI (preview 1) with a custom BSD sockets interface (as p1 doesn't provide one that is complete enough).
+This allows it to be compiled down to languages like C or Java, allowing support for "runtime-native" execution in:
+ * JVM
+ * dotnet/mono runtime
+ * V8
+
+Or perhaps even old Windows versions down to 3.1 (using win32s). To be tested!
 
 ## FAQ
 
