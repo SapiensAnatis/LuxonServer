@@ -138,12 +138,16 @@ Luxon Server is highly portable. It natively runs on:
  * Nintendo 3DS (devkitpro)
 
 It can additionally target WASI (preview 1) with a custom BSD sockets interface (as p1 doesn't provide one that is complete enough).
-This allows it to be compiled down to languages like C or Java, allowing support for "runtime-native" execution in:
- * JVM
+This allows it to be compiled down to other languages / ILs, allowing support for "runtime-native" execution in:
+ * [JVM](/WASMImpl/Java/)
  * dotnet/mono runtime
  * V8
 
-Or perhaps even old Windows versions down to 3.1 (using win32s). To be tested!
+Compilation to C and then to old platforms is also possible, including:
+ * [DOS](WASMImpl/C/)
+ * Windows 3.1 with *win32s*
+
+Note that I can't "officially" support the latter 2 platforms. Expect them to run non-optimally. Still free to create an issue if you see any problems with them.
 
 ## FAQ
 
