@@ -87,16 +87,16 @@ Possible compile time options:
  - **`LUXON_SERVER_ENABLE_WEBSERVER`** (default: `ON`): Enable the built-in webserver including the web interface
  - **`LUXON_SERVER_ENABLE_PLUGINS`** (default: `OFF`): Enables plugin system
  - **`LUXON_PLUGINS`** (default: empty): Semicolon separated list of CMake projects to configure containing `luxon_register_plugin()` CMake calls for statically linking a plugin into Luxon Server
- - **`LUXON_SERVER_ENABLE_COROUTINES`** (default: `OFF`): Enables coroutines, potentially required for some plugins, makes plugin development easier
+ - **`LUXON_SERVER_ENABLE_COROUTINES`** (default: `OFF`): Enables coroutines, potentially required for some plugins, makes plugin development easier. *Only available if `LUXON_SERVER_ENABLE_PLUGINS` is `ON`. Strictly disabled if `LUXON_SERVER_BUILD_FFI` is `ON`*
  - **`LUXON_SERVER_BUILD_FFI`** (default: `OFF`): Builds the FFI library
- - **`LUXON_SERVER_EXPOSE_FULL_FFI`** (default: `OFF`): Enables all features required to expose the *full* FFI. Forces `LUXON_SERVER_BUILD_FFI`, `LUXON_SERVER_ENABLE_PLUGINS` and `LUXON_SERVER_HOOKPOINTS` to be `ON`.
+ - **`LUXON_SERVER_EXPOSE_FULL_FFI`** (default: `OFF`): Enables all features required to expose the *full* FFI. *Only available if `LUXON_SERVER_BUILD_FFI` is `ON`. Forces `LUXON_SERVER_HOOKPOINTS` to be `ON`*
  - **`LUXON_SERVER_POLL`** (default: `OFF`): Polls sockets blindly and rapidly, less efficient and slower
- - **`LUXON_SERVER_HOOKPOINTS`** (default: `OFF`): Useful when linking LuxonServer as a library, allows hooking into some parts of the server via `ServerManager::hookpoints` (see [hookpoints.hpp](https://github.com/niansa/LuxonServer/blob/master/include/luxon/server/hookpoints.hpp))
- - **`LUXON_USE_EMBED_RESOURCE`** (default: `OFF` except on Windows): Uses the [embedresource](https://github.com/ankurvdev/embedresource) library for binary embedding instead of inline assembly
+ - **`LUXON_SERVER_HOOKPOINTS`** (default: `OFF`, forced `ON` if full FFI is exposed): Useful when linking LuxonServer as a library, allows hooking into some parts of the server via `ServerManager::hookpoints` (see [hookpoints.hpp](https://github.com/niansa/LuxonServer/blob/master/include/luxon/server/hookpoints.hpp))
+ - **`LUXON_USE_EMBED_RESOURCE`** (default: `OFF` except on Windows and WebAssembly): Uses the [embedresource](https://github.com/ankurvdev/embedresource) library for binary embedding instead of inline assembly
  - **`LUXON_SERVER_TRACY`** (default: `OFF`): Links and enables [Tracy](https://github.com/wolfpld/tracy) client
  - **`LUXON_ENET_ENABLE_METRICS`** (default: `OFF`): Collects more metrics available as a Prometheus endpoint on webserver (`/metrics`), ready for use with provided [Grafana Dashboard](https://github.com/niansa/LuxonServer/blob/master/grafana-dashboard.json)
  - **`LUXON_USE_TOMCRYPT`** (default: `OFF`): Use alternative encryption library with wider compatibility
-
+ 
 ### Configuration
 
 The server is configured via a `config.yml` file. A `config.example.yml` is provided in the repository.

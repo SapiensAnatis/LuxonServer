@@ -25,23 +25,30 @@ include(cmake/CPM.cmake)
 option(LUXON_SERVER_BUILD_FFI "Builds shared library with C FFI" OFF)
 option(LUXON_SERVER_ENABLE_PLUGINS "Enable use of plugins" ${LUXON_SERVER_EXPOSE_FULL_FFI})
 
-if (LUXON_SERVER_BUILD_FFI)
-    option(LUXON_SERVER_EXPOSE_FULL_FFI "Build with full FFI interface exposed" OFF)
-    # If building FFI, coroutines are strictly disabled
-    set(LUXON_SERVER_ENABLE_COROUTINES OFF CACHE BOOL "Enable execution of handler code in coroutines" FORCE)
-else()
-    # If not building FFI, full FFI exposure must be strictly disabled
-    set(LUXON_SERVER_EXPOSE_FULL_FFI OFF CACHE BOOL "Build with full FFI interface exposed" FORCE)
-    if (LUXON_SERVER_ENABLE_PLUGINS OR LUXON_SERVER_BUILD_FFI)
-        option(LUXON_SERVER_ENABLE_COROUTINES "Enable execution of handler code in coroutines" OFF)
-    else()
-        set(LUXON_SERVER_ENABLE_COROUTINES OFF CACHE BOOL "Enable execution of handler code in coroutines" FORCE)
-    endif()
+include(CMakeDependentOption)
+
+# Base Options
+option(LUXON_SERVER_BUILD_FFI "Build the FFI" OFF)
+option(LUXON_SERVER_ENABLE_PLUGINS "Enable plugins" OFF)
+
+# Dependent Options
+cmake_dependent_option(LUXON_SERVER_EXPOSE_FULL_FFI
+    "Build with full FFI interface exposed" OFF
+    "LUXON_SERVER_BUILD_FFI" OFF)
+
+cmake_dependent_option(LUXON_SERVER_ENABLE_COROUTINES
+    "Enable execution of handler code in coroutines" OFF
+    "LUXON_SERVER_ENABLE_PLUGINS;NOT LUXON_SERVER_BUILD_FFI" OFF)
+
+# Hookpoints Logic
+option(LUXON_SERVER_HOOKPOINTS "Allows library user or plugins to hook into specific parts of Luxon Server" OFF)
+if (LUXON_SERVER_EXPOSE_FULL_FFI)
+    set(LUXON_SERVER_HOOKPOINTS ON CACHE BOOL "Allows library user or plugins to hook into specific parts of Luxon Server" FORCE)
 endif()
 
+# Standard Options
 option(LUXON_SERVER_ENABLE_WEBSERVER "Enable the built-in webserver" ON)
 option(LUXON_SERVER_POLL "Poll blindly instead of select with timeout, less efficient" OFF)
-option(LUXON_SERVER_HOOKPOINTS "Allows library user or plugins to hook into specific parts of Luxon Server" ${LUXON_SERVER_EXPOSE_FULL_FFI})
 option(LUXON_USE_EMBED_RESOURCE "Use EmbedResource instead of incbin.h" OFF)
 option(LUXON_SERVER_TRACY "Build Luxon Server with tracy enabled" OFF)
 option(LUXON_SERVER_TRACY_ON_DEMAND "Only collect tracy data with profiler server connected" ON)
