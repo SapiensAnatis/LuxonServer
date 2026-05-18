@@ -267,6 +267,41 @@ package:java_wasm:
       - build/luxon_server.java-17.release.jar
     expire_in: 1 week
 
+# RelWithDebInfo build MS-DOS (i586) via Watt-32/DJGPP
+build:djgpp:msdos:
+  extends: .build_template
+  image: debian:trixie
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "web"
+  needs:
+    - build:wasip1:wasm32
+  before_script:
+    - apt-get update && apt-get install -y build-essential wget bzip2 git nasm libfl2 llvm
+    - wget -q https://github.com/andrewwutw/build-djgpp/releases/download/v3.4/djgpp-linux64-gcc1220.tar.bz2 -O /tmp/djgpp.tar.bz2
+    - mkdir -p /opt && tar -xf /tmp/djgpp.tar.bz2 -C /opt
+    - export PATH=/opt/djgpp/bin:$PATH
+    - git clone https://github.com/gvanem/Watt-32.git /tmp/Watt-32
+    - cd /tmp/Watt-32/src
+    - ./configur.sh djgpp
+    - wget -q https://github.com/jwt27/build-gcc/raw/refs/heads/master/patch/watt32-djgpp-205/djgpp.err -O ../inc/sys/djgpp.err
+    - mkdir -p build/djgpp/
+    - wget -q https://github.com/jwt27/build-gcc/raw/refs/heads/master/patch/watt32-djgpp-205/syserr.c -O build/djgpp/syserr.c
+    - make -f djgpp.mak -j$(nproc)
+    - mkdir -p /opt/djgpp/i586-pc-msdosdjgpp/include/watt32
+    - cp -r ../inc/* /opt/djgpp/i586-pc-msdosdjgpp/include/watt32/
+    - cp ../lib/libwatt.a /opt/djgpp/i586-pc-msdosdjgpp/lib/
+    - cd $CI_PROJECT_DIR
+    - wget -q https://github.com/WebAssembly/wabt/releases/download/1.0.41/wabt-1.0.41-linux-x64.tar.gz
+    - tar -xzf wabt-1.0.41-linux-x64.tar.gz -C /opt
+  script:
+    - export PATH=/opt/djgpp/bin:/opt/wabt-1.0.41/bin:$PATH
+    - cp build/luxon_server.wasi-sdk.rel+debinfo.wasm WASMImpl/C/luxon_server.wasm
+    - cd WASMImpl/C
+    - llvm-strip luxon_server.wasm
+    - make -f Makefile.djgpp -j$(nproc)
+    - mv luxon_server.exe ../../build/luxon_server.djgpp.release.exe
+
 # RelWithDebInfo build amd64 via MSVC
 build:msvc:amd64:
   extends: .build_template
