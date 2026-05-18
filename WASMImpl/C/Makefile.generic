@@ -1,0 +1,40 @@
+# --- Toolchain & Flags ---
+CC        := clang
+CFLAGS    := -O3 -flto=full
+LDFLAGS   := -lm
+
+WASM2C    := wasm2c
+WASMFLAGS := --enable-exceptions
+
+# --- Files & Targets ---
+TARGET    := luxon_server
+WASM_BIN  := luxon_server.wasm
+GEN_SRC   := luxon_server.c
+GEN_HDR   := luxon_server.h
+
+SRCS      := main-generic.c sockets.c wasi.c $(GEN_SRC) wasm-rt-impl.c wasm-rt-mem-impl.c wasm-rt-exceptions-impl.c
+OBJS      := $(SRCS:.c=.o)
+
+# --- Build Rules ---
+.PHONY: all clean
+
+all: $(TARGET)
+
+# Link final executable
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+
+# Compile C files
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# 3. Generate C code
+$(GEN_SRC): $(WASM_BIN)
+	$(WASM2C) $(WASMFLAGS) $< -o $@
+
+# Ensure generated source exists
+$(OBJS): | $(GEN_SRC)
+
+# --- Cleanup ---
+clean:
+	rm -f $(TARGET) $(OBJS) $(GEN_SRC) $(GEN_HDR)

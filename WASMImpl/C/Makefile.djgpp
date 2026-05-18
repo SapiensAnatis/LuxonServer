@@ -1,0 +1,37 @@
+# --- Toolchain & Flags ---
+CC        := i586-pc-msdosdjgpp-gcc
+CFLAGS    := -O3 -I. -I/opt/djgpp/i586-pc-msdosdjgpp/include/watt32
+LDFLAGS   := -lm -lwatt
+
+WASM2C    := wasm2c
+WASMFLAGS := --enable-exceptions
+
+# --- Files & Targets ---
+TARGET    := luxon_server.exe
+WASM_BIN  := luxon_server.wasm
+GEN_SRC   := luxon_server.c
+GEN_HDR   := luxon_server.h
+
+SRCS      := main-djgpp.c sockets.c wasi.c $(GEN_SRC) wasm-rt-impl.c wasm-rt-mem-impl.c wasm-rt-exceptions-impl.c
+OBJS      := $(SRCS:.c=.o)
+
+# --- Build Rules ---
+.PHONY: all clean
+
+all: $(TARGET)
+
+# Link final executable
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+
+# Compile C files
+%.o: %.c $(GEN_HDR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Generate C code from WASM
+$(GEN_SRC) $(GEN_HDR): $(WASM_BIN)
+	$(WASM2C) $(WASMFLAGS) $< -o $(GEN_SRC)
+
+# --- Cleanup ---
+clean:
+	rm -f $(TARGET) $(OBJS) $(GEN_SRC) $(GEN_HDR)
