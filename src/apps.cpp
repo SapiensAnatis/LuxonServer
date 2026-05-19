@@ -77,8 +77,7 @@ std::shared_ptr<Lobby> App::get_lobby(LobbyId id) {
     ZoneScoped;
 
     // Try to find lobby first
-    auto res = lobbies_.find(id);
-    if (res != lobbies_.end())
+    if (auto res = lobbies_.find(id); res != lobbies_.end())
         if (auto lobby = res->second.lock())
             return lobby;
 
@@ -94,21 +93,17 @@ std::shared_ptr<Lobby> App::get_lobby(LobbyId id) {
 std::shared_ptr<App> App::get(ServerManager& server_manager, const std::string& id, const std::string& version) {
     ZoneScoped;
 
-    {
-        auto res = server_manager.apps.find({id, version});
-        if (res != server_manager.apps.end()) {
-            if (auto fres = res->second.lock())
-                return fres;
-            else
-                server_manager.apps.erase(res);
-        }
+    if (auto res = server_manager.apps.find({id, version}); res != server_manager.apps.end()) {
+        if (auto fres = res->second.lock())
+            return fres;
+        else
+            server_manager.apps.erase(res);
     }
 
     auto res = server_manager.apps.emplace(std::pair<std::string, std::string>(id, version), std::weak_ptr<App>());
     const auto& [allocated_id, allocated_version] = res.first->first;
     std::shared_ptr<App> fres(new App(server_manager, allocated_id, allocated_version), [&server_manager](App *ptr) {
-        auto it = server_manager.apps.find({std::string(ptr->id), std::string(ptr->version)});
-        if (it != server_manager.apps.end())
+        if (auto it = server_manager.apps.find({std::string(ptr->id), std::string(ptr->version)}); it != server_manager.apps.end())
             server_manager.apps.erase(it);
         delete ptr;
     });

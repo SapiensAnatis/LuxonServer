@@ -360,10 +360,9 @@ ser::Value Game::get_game_prop(const ser::Value& key) {
     if (update_lobby)
         trigger_lobby_update();
 
-    auto res = custom_props.find(key);
-    if (res == custom_props.end())
-        return ser::Value(); // null
-    return res->second;
+    if (auto res = custom_props.find(key); res != custom_props.end())
+        return res->second;
+    return ser::Value(); // null
 }
 
 ser::Hashtable Game::get_lobby_game_props() const {
@@ -421,13 +420,11 @@ void Game::insert_game_props(ser::Hashtable update) {
             }
         } else {
             // Update custom props
-            if (!key.is_null()) {
+            if (!key.is_null())
                 custom_props[key] = value;
-            } else if (delete_null) {
-                auto res = custom_props.find(key);
-                if (res != custom_props.end())
+            else if (delete_null)
+                if (auto res = custom_props.find(key); res != custom_props.end())
                     custom_props.erase(res);
-            }
         }
     }
 
@@ -472,13 +469,11 @@ bool Game::insert_actor_props(int32_t actor_id, const ser::Hashtable& update) {
 
     const bool delete_null = flags & GameFlags::DeleteNullProps;
     for (const auto& [key, value] : update) {
-        if (!key.is_null()) {
+        if (!key.is_null())
             actor_props[key] = value;
-        } else if (delete_null) {
-            auto res = actor_props.find(key);
-            if (res != actor_props.end())
+        else if (delete_null)
+            if (auto res = actor_props.find(key); res != actor_props.end())
                 actor_props.erase(res);
-        }
     }
 
     return true;

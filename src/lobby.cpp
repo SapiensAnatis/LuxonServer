@@ -60,8 +60,7 @@ Lobby::~Lobby() noexcept { sqlite3_close_v2(sql); }
 std::expected<std::shared_ptr<Game>, ser::OperationResponseMessage> Lobby::create_game(std::string id, bool or_get) {
     ZoneScoped;
 
-    auto res = games.find(id);
-    if (res != games.end())
+    if (auto res = games.find(id); res != games.end())
         return or_get ? res->second.lock() : nullptr;
 
     const auto max_game_count = app->get_settings().max_game_count;
@@ -77,8 +76,7 @@ std::expected<std::shared_ptr<Game>, ser::OperationResponseMessage> Lobby::creat
             handler.game_delete(ptr);
 
         auto& games = lobby->games;
-        auto res = games.find(ptr->id);
-        if (res != games.end())
+        if (auto res = games.find(ptr->id); res != games.end())
             games.erase(res);
 
         delete ptr;

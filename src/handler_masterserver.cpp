@@ -321,11 +321,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
 
             // Find game with given ID
             peer_->log->info("Finding game: {}", game_id);
-            auto res = lobby.value()->games.find(game_id);
 
             std::shared_ptr<Game> game;
             bool is_new = false;
-            if (res == lobby.value()->games.end()) {
+            if (auto res = lobby.value()->games.find(game_id); res == lobby.value()->games.end()) {
                 if (!params->get<DictKeyCodes::AuthAndLobby::CreateIfNotExists>()) {
                     const ser::OperationResponseMessage resp{.operation_code = OpCodes::Matchmaking::JoinGame,
                                                              .return_code = ErrorCodes::Matchmaking::GameIdNotExists,

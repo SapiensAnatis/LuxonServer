@@ -428,10 +428,9 @@ Lobby *HttpServer::find_lobby(App *app, std::string_view name, uint8_t type) {
     ZoneScoped;
 
     const auto lobbies = app->get_lobbies();
-    auto res = lobbies.find({name, type});
-    if (res == lobbies.end())
-        return nullptr;
-    return res->second.lock().get();
+    if (auto res = lobbies.find({name, type}); res != lobbies.end())
+        return res->second.lock().get();
+    return nullptr;
 }
 
 Lobby *HttpServer::find_lobby(App *app, std::string_view name) {
