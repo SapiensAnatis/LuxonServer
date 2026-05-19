@@ -6,6 +6,10 @@ LDFLAGS   := -lm
 WASM2C    := wasm2c
 WASMFLAGS := --enable-exceptions
 
+ifeq ($(DISABLE_CHECKS), 1)
+CFLAGS += -DDISABLE_BOUNDS_CHECKS=1
+endif
+
 # --- Files & Targets ---
 TARGET    := luxon_server
 WASM_BIN  := luxon_server.wasm
@@ -14,6 +18,9 @@ GEN_HDR   := luxon_server.h
 
 SRCS      := main-generic.c sockets.c wasi.c $(GEN_SRC) wasm-rt-impl.c wasm-rt-mem-impl.c wasm-rt-exceptions-impl.c
 OBJS      := $(SRCS:.c=.o)
+
+include Makefile.common
+
 
 # --- Build Rules ---
 .PHONY: all clean
@@ -31,6 +38,7 @@ $(TARGET): $(OBJS)
 # 3. Generate C code
 $(GEN_SRC): $(WASM_BIN)
 	$(WASM2C) $(WASMFLAGS) $< -o $@
+	$(call PATCH_WASM2C,$@)
 
 # Ensure generated source exists
 $(OBJS): | $(GEN_SRC)

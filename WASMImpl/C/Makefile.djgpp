@@ -1,6 +1,6 @@
 # --- Toolchain & Flags ---
 CC        := i586-pc-msdosdjgpp-gcc
-CFLAGS    := -O3 -I. -I/opt/djgpp/i586-pc-msdosdjgpp/include/watt32
+CFLAGS    := -O3 -I. -I/opt/djgpp/i586-pc-msdosdjgpp/include/watt32 -DDISABLE_BOUNDS_CHECKS=1
 LDFLAGS   := -lm -lwatt
 
 WASM2C    := wasm2c
@@ -14,6 +14,9 @@ GEN_HDR   := luxon_server.h
 
 SRCS      := main-djgpp.c sockets.c wasi.c $(GEN_SRC) wasm-rt-impl.c wasm-rt-mem-impl.c wasm-rt-exceptions-impl.c
 OBJS      := $(SRCS:.c=.o)
+
+include Makefile.common
+
 
 # --- Build Rules ---
 .PHONY: all clean
@@ -31,6 +34,10 @@ $(TARGET): $(OBJS)
 # Generate C code from WASM
 $(GEN_SRC) $(GEN_HDR): $(WASM_BIN)
 	$(WASM2C) $(WASMFLAGS) $< -o $(GEN_SRC)
+	$(call PATCH_WASM2C,$@)
+
+# Ensure generated source exists
+$(OBJS): | $(GEN_SRC)
 
 # --- Cleanup ---
 clean:
