@@ -164,7 +164,7 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             event.delivery_mode = enet::FlagsToEnetDeliveryMode(cmd_header.flags);
             event.interest_group = params->get<InterestGroup>();
             event.channel = cmd_header.channel_id;
-            if (const auto& actors = params->get<ActorList>())
+            if (const auto *actors = params->get<ActorList>())
                 event.receivers = *actors | std::ranges::to<std::unordered_set>();
             else
                 event.receivers = params->get<DictKeyCodes::RoutingAndEvents::ReceiverGroup>();
