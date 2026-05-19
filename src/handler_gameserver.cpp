@@ -160,7 +160,8 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             Event event;
             event.sender_actor_id = game_peer_->actor_id;
             event.code = params->get<Code>();
-            event.data = std::move(req.parameters[Data]);
+            if (auto it = req.parameters.find(Data); it != req.parameters.end())
+                event.data = std::move(it->second);
             event.delivery_mode = enet::FlagsToEnetDeliveryMode(cmd_header.flags);
             event.interest_group = params->get<InterestGroup>();
             event.channel = cmd_header.channel_id;
@@ -173,12 +174,12 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             GAME_PLUGINS_INVOKE({
                 OnRaiseEventCallInfo info{.raiser = game_peer_, .event = event, .cache_op = cache_op};
                 const Result res = game->execute_plugin_chain(&PluginBase::OnRaiseEvent, req, info);
-                
+
                 if (res == Result::Cancel)
                     return;
                 if (res == Result::Fail) {
                     const ser::OperationResponseMessage resp{.operation_code = OpCodes::Lite::RaiseEvent,
-                                                         .return_code = ErrorCodes::Matchmaking::PluginReportedError};
+                                                             .return_code = ErrorCodes::Matchmaking::PluginReportedError};
                     send(proto_->Serialize(resp), enet::EnetSendOptions{.channel = cmd_header.channel_id});
                     return;
                 }
