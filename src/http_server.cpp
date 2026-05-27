@@ -66,9 +66,16 @@ using namespace luxon::ser;
 namespace server {
 namespace {
 void set_nonblocking(int fd) {
-#ifdef _WIN32
+#if defined(_WIN32)
     u_long mode = 1;
     ioctlsocket(fd, FIONBIO, &mode);
+#elif defined(__BLOCKSDS__)
+    int mode = 1;
+    ioctl(fd, FIONBIO, &mode);
+
+    // Disable Nagle's algorithm
+    int yes = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char *>(&yes), sizeof(yes));
 #else
     int flags = FCNTL(fd, F_GETFL, 0);
     FCNTL(fd, F_SETFL, flags | O_NONBLOCK);
@@ -272,27 +279,6 @@ void HttpServer::service_now() {
         if (client.mark_for_delete)
             continue;
 
-        // Handle Outgoing Data
-        if (!client.write_buffer.empty()) {
-            int sent = send(client.fd, client.write_buffer.data(), client.write_buffer.size(), 0);
-            if (sent > 0) {
-                client.write_buffer.erase(0, sent);
-            } else if (sent < 0 && errno != EWOULDBLOCK && errno != EAGAIN) {
-                client.mark_for_delete = true;
-            }
-        }
-
-        // Graceful Shutdown Logic
-        if (client.close_after_write && client.write_buffer.empty()) {
-            if (!client.shutdown_sent) {
-                shutdown(client.fd, SHUT_WR);
-                client.shutdown_sent = true;
-            }
-        }
-
-        if (client.mark_for_delete)
-            continue;
-
         // Handle Incoming Data
 #ifndef LUXON_SERVER_POLL
         if (std::ranges::contains(servicable_fds_, client.fd))
@@ -315,6 +301,27 @@ void HttpServer::service_now() {
                 client.mark_for_delete = true;
             }
         }
+
+        // Handle Outgoing Data
+        if (!client.write_buffer.empty()) {
+            int sent = send(client.fd, client.write_buffer.data(), client.write_buffer.size(), 0);
+            if (sent > 0) {
+                client.write_buffer.erase(0, sent);
+            } else if (sent < 0 && errno != EWOULDBLOCK && errno != EAGAIN) {
+                client.mark_for_delete = true;
+            }
+        }
+
+        // Graceful Shutdown Logic
+        if (client.close_after_write && client.write_buffer.empty()) {
+            if (!client.shutdown_sent) {
+                shutdown(client.fd, SHUT_WR);
+                client.shutdown_sent = true;
+            }
+        }
+
+        if (client.mark_for_delete)
+            continue;
     }
 
     std::erase_if(clients_, [this](const HttpClient& c) {

@@ -58,7 +58,7 @@ cmake_dependent_option(LUXON_SERVER_ENABLE_COROUTINES
 set(WEB_ROOT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/web")
 
 # Apply single-threaded optimizations if strictly single-threaded
-if (NOT LUXON_SERVER_ENABLE_PLUGINS AND NOT WIN32 AND NOT LUXON_SERVER_TRACY)
+if (NOT LUXON_SERVER_ENABLE_PLUGINS AND NOT WIN32 AND NOT LUXON_SERVER_TRACY AND NOT NINTENDO_DS)
     add_compile_options($<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-threadsafe-statics>)
     add_compile_definitions(thread_local=)
 endif()
@@ -107,7 +107,7 @@ endif()
 
 # Include commoncpp
 if (NOT TARGET commoncpp)
-    CPMAddPackage("gl:niansa/commoncpp@1.1")
+    CPMAddPackage("gl:niansa/commoncpp@1.2.1")
 endif()
 
 # Include magic enum
@@ -256,6 +256,10 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL Windows)
     target_link_libraries(luxon_server_lib PRIVATE ws2_32)
 elseif (CMAKE_SYSTEM_NAME STREQUAL Nintendo3DS)
     target_compile_definitions(luxon_server_lib PRIVATE PLATFORM_3DS)
+elseif (CMAKE_SYSTEM_NAME STREQUAL NintendoDS)
+    target_compile_definitions(luxon_server_lib PRIVATE PLATFORM_NDS)
+    target_link_libraries(luxon_server_lib PRIVATE dswifi9)
+    nds_create_rom(luxon_server)
 elseif (CMAKE_SYSTEM_NAME STREQUAL FreeBSD)
     target_compile_definitions(luxon_server_lib PRIVATE PLATFORM_FREEBSD)
 elseif (CMAKE_SYSTEM_NAME STREQUAL Darwin)
