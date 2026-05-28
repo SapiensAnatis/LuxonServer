@@ -324,6 +324,8 @@ ServerManager::ServerManager(ServerManagerConfig config) : endpoints(std::move(c
     max_connections_ = config.max_connections;
     max_game_peers_ = NormalizeMaxGamePeers(config.max_game_peers);
     tick_time_budget_ = config.tick_time_budget;
+    if (tick_time_budget_ == 0)
+        tick_time_budget_ = ~tick_time_budget_;
 
 #ifdef LUXON_SERVER_ENABLE_SETTINGS_DATABASE
     if (!config.settings_database_path.empty()) {

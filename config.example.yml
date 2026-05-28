@@ -45,7 +45,7 @@ External:
 EnableIPv6: true
 MaxConnections: 20
 MaxGamePeers: 0 # No explicit limit
-TickTimeBudget: 2000 # In microseconds, more clients -> lower value; higher value -> lower latency
+TickTimeBudget: 2000 # In microseconds, 0 to disable, more clients -> lower value; higher value -> lower latency
 
 # Settings database
 # Requires to LUXON_SERVER_ENABLE_SETTINGS_DATABASE to be enabled at build time
