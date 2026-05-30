@@ -37,15 +37,13 @@ cmake_dependent_option(LUXON_SERVER_TRACY_ON_DEMAND
 
 # FFI & Plugin options
 option(LUXON_SERVER_BUILD_FFI "Builds shared library with C FFI" OFF)
-
-cmake_dependent_option(LUXON_SERVER_EXPOSE_FULL_FFI
-    "Build with full FFI interface exposed" OFF
-    "LUXON_SERVER_BUILD_FFI" OFF)
+option(LUXON_SERVER_EXPOSE_FULL_FFI "Build with full FFI interface exposed" OFF)
 
 option(LUXON_SERVER_HOOKPOINTS "Allows library user or plugins to hook into specific parts of Luxon Server" OFF)
 option(LUXON_SERVER_ENABLE_PLUGINS "Enable use of plugins" OFF)
 
 if (LUXON_SERVER_EXPOSE_FULL_FFI)
+    set(LUXON_SERVER_BUILD_FFI ON CACHE BOOL "Builds shared library with C FFI" FORCE)
     set(LUXON_SERVER_HOOKPOINTS ON CACHE BOOL "Allows library user or plugins to hook into specific parts of Luxon Server" FORCE)
     set(LUXON_SERVER_ENABLE_PLUGINS ON CACHE BOOL "Enable use of plugins" FORCE)
 endif()
@@ -85,6 +83,11 @@ else()
     set(LUXON_SERVER_USE_SPDLOG OFF)
     set(LUXON_SERVER_USE_SANMAKE OFF)
     set(LUXON_SERVER_ENABLE_SETTINGS_DATABASE OFF)
+endif()
+
+# Override spdlog if full FFI is exposed
+if (LUXON_SERVER_EXPOSE_FULL_FFI)
+    set(LUXON_SERVER_USE_SPDLOG OFF CACHE BOOL "Use spdlog for Luxon server" FORCE)
 endif()
 
 # Include sanmake

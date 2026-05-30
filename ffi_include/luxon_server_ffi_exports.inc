@@ -67,6 +67,9 @@ FFI_FUNCTION(bool, deserializeSerValue, (const uint8_t *buf, ffi_size_t len, Ser
 FFI_FUNCTION(bool, deserializeSerValueFromByteArray, (ByteArrayHandle val, SerValueHandle out_val), val, out_val)
 
 /* --- LOGGER INTERFACE --- */
+#ifndef LUXON_SERVER_USE_SPDLOG
+FFI_FUNCTION(void, luxonEnableCustomLogSink, (bool enable), enable)
+#endif
 FFI_FUNCTION(LoggerHandle, getOrCreateLogger, (const char *name), name)
 FFI_FUNCTION(void, setLoggerLevel, (LoggerHandle logger, int32_t level), logger, level)
 FFI_FUNCTION(void, loggerTrace, (LoggerHandle logger, const char *message), logger, message)

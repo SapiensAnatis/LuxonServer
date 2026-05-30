@@ -515,6 +515,23 @@ bool deserializeSerValueFromByteArray(ByteArrayHandle val, SerValueHandle out_va
  * LOGGER INTERFACE IMPLEMENTATION
  * ============================================================================ */
 
+void luxonEnableCustomLogSink(bool enable) {
+#ifndef LUXON_SERVER_USE_SPDLOG
+    if (enable) {
+        server::custom_log_sink = [](server::log_level level, std::string message) {
+#if defined(FFI_WASM) || defined(__wasm__)
+            customLogSink(static_cast<int32_t>(level), message.c_str());
+#else
+            if (g_imports.customLogSink)
+                g_imports.customLogSink(static_cast<int32_t>(level), message.c_str());
+#endif
+        };
+    } else {
+        server::custom_log_sink = nullptr;
+    }
+#endif
+}
+
 LoggerHandle getOrCreateLogger(const char *name) {
     if (!name)
         return wrap<LoggerHandle>(nullptr);
@@ -533,11 +550,7 @@ LoggerHandle getOrCreateLogger(const char *name) {
 void setLoggerLevel(LoggerHandle logger, int32_t level) {
     if (auto *l = unwrap<server::logger>(logger)) {
         ffi_safe_exec([=] {
-#ifdef LUXON_SERVER_USE_SPDLOG
-            l->set_level(static_cast<spdlog::level::level_enum>(level));
-#else
             l->set_level(static_cast<server::log_level>(level));
-#endif
         });
     }
 }
