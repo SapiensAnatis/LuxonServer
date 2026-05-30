@@ -32,7 +32,7 @@
     if (get_server_manager().should_abort_active_command())                                                                                                    \
     return
 #else
-#define GAME_PLUGINS_INVOKE(...) (void)
+#define GAME_PLUGINS_INVOKE(...)
 #endif
 
 namespace luxon::ser {

@@ -311,7 +311,10 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             }
 
             if (is_master) {
-                if (get_game()->plugins.empty()) {
+#ifdef LUXON_SERVER_ENABLE_PLUGINS
+                if (get_game()->plugins.empty())
+#endif
+                {
                     // Load given plugins if creating room
                     for (const std::string& plugin_name : params->get<DictKeyCodes::RpcAndPlugins::Plugins>()) {
 #ifdef LUXON_SERVER_ENABLE_PLUGINS
