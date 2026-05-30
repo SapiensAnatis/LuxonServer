@@ -158,7 +158,7 @@ Note that I can't "officially" support the latter 2 platforms. Expect them to ru
 **A:** I have looked into spawning more processes running GameServer instances, as an alternative to multi-threading. However, I am strictly against supporting load balancing across different systems. I do NOT want to agitate Exit Games by releasing a competitive product.
 
 **Q:** Are you going to write bindings for writing plugins in C#, Python, Javascript, ...?\
-**A:** No. First of all, the project is moving very quickly right now. These bindings would need constant updating and maintenance. Feel free to maintain your own bindings externally, pinned to a specific version of Luxon Server.
+**A:** Probably a few simple ones, like for Python. An FFI interface exists now, and I consider it to be quite stable. When writing your own bindings however, be sure to pin luxonserver to a specific commit or tag to avoid any breakages that may occur anyways. I can't guarantee full, complete FFI ABI stability yet.
 
 **Q:** Isn't it a bad idea to provide blocking functions (functions that only return when an operation has completed) in `ServerManager` when the server is purely single-threaded?\
 **A:** This is fairly well hidden, but plugins actually always run in coroutines. These functions suspend the coroutine until the work is complete.
