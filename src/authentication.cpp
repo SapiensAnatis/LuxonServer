@@ -76,6 +76,7 @@ ser::OperationResponseMessage authenticate(ServerManager& server_manager, Peer& 
         if (!params)
             return params.error();
 
+        server_manager.mark_command_committed();
         peer.persistent = load_persistent_peer(server_manager, params->get<DictKeyCodes::LoadBalancing::Token>(), refresh_token);
     } else {
         // Regular mechanism
@@ -83,7 +84,7 @@ ser::OperationResponseMessage authenticate(ServerManager& server_manager, Peer& 
         if (!params)
             return params.error();
 
-        auto& p = peer.persistent = create_persistent_peer();
+        auto p = create_persistent_peer();
 
         // Handle app version
         const std::string& app_id = params->get<DictKeyCodes::LoadBalancing::ApplicationId>();
@@ -168,6 +169,10 @@ ser::OperationResponseMessage authenticate(ServerManager& server_manager, Peer& 
                     .debug_message = "Authentication plugins are disabled"};
 #endif
         }
+
+        // No turning back
+        server_manager.mark_command_committed();
+        peer.persistent = std::move(p);
     }
 
     // Check for success

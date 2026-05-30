@@ -29,6 +29,7 @@ FFI_HANDLE_TYPE(ByteArrayHandle)
 FFI_HANDLE_TYPE(SerValueHandle)
 FFI_HANDLE_TYPE(SerMessageHandle)
 FFI_HANDLE_TYPE(HandlerBaseHandle)
+FFI_HANDLE_TYPE(CommandRestarterHandle)
 
 /* ============================================================================
  * FUNCTIONS TABLE
@@ -212,7 +213,20 @@ FFI_FUNCTION(ffi_size_t, serverManagerGetConnectionCount, (ServerManagerHandle m
 FFI_FUNCTION(unsigned, serverManagerGetMaxConnections, (ServerManagerHandle manager), manager)
 FFI_FUNCTION(uint8_t, serverManagerGetMaxGamePeers, (ServerManagerHandle manager), manager)
 
-/* --- PLUGINS & HOOKPOINTS REGISTRATION INTERFACE --- */
+/* --- HANDLER / GAME EXTENSIONS --- */
+FFI_FUNCTION(ServerManagerHandle, handlerBaseGetServerManager, (HandlerBaseHandle handler), handler)
+FFI_FUNCTION(ServerManagerHandle, gameGetServerManager, (GameHandle game), game)
+
+/* --- COMMAND RESTARTER INTERFACE --- */
+FFI_FUNCTION(bool, serverManagerShouldAbortActiveCommand, (ServerManagerHandle manager), manager)
+FFI_FUNCTION(void, serverManagerMarkCommandCommited, (ServerManagerHandle manager), manager)
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+FFI_FUNCTION(CommandRestarterHandle, serverManagerTakeCommandRestarter, (ServerManagerHandle manager), manager)
+FFI_FUNCTION(void, commandRestarterRestart, (CommandRestarterHandle restarter), restarter)
+FFI_FUNCTION(void, destroyCommandRestarter, (CommandRestarterHandle restarter), restarter)
+#endif
+
+/* --- PLUGINS / HOOKPOINTS REGISTRATION INTERFACE --- */
 #ifdef LUXON_SERVER_ENABLE_PLUGINS
 FFI_FUNCTION(uint32_t, registerGamePlugin, (const char *plugin_name), plugin_name)
 FFI_FUNCTION(bool, registerAuthPlugin, (unsigned type), type)

@@ -26,7 +26,8 @@ struct Hookpoints {
 } // namespace server
 
 #define LUXON_SERVER_HOOKPOINT_CSM(custom_server_manager, name, ...)                                                                                           \
-    if (custom_server_manager.hookpoints.name && custom_server_manager.hookpoints.name(*this, __VA_ARGS__))                                                    \
+    if (custom_server_manager.hookpoints.name &&                                                                                                               \
+        (custom_server_manager.hookpoints.name(*this, __VA_ARGS__) || custom_server_manager.should_abort_active_command()))                                    \
     return
 #define LUXON_SERVER_HOOKPOINT(name, ...) LUXON_SERVER_HOOKPOINT_CSM(server_manager_, name, __VA_ARGS__)
 #else

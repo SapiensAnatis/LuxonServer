@@ -28,9 +28,11 @@
     {                                                                                                                                                          \
         using namespace game_plugins;                                                                                                                          \
         __VA_ARGS__                                                                                                                                            \
-    }
+    }                                                                                                                                                          \
+    if (get_server_manager().should_abort_active_command())                                                                                                    \
+    return
 #else
-#define GAME_PLUGINS_INVOKE(...)
+#define GAME_PLUGINS_INVOKE(...) (void)
 #endif
 
 namespace luxon::ser {
@@ -101,6 +103,12 @@ struct Game : std::enable_shared_from_this<Game> {
     Game(std::shared_ptr<Lobby> lobby, std::string id) : lobby(std::move(lobby)), id(std::move(id)) {}
 
     std::list<GamePeer> peers;
+
+    ///
+    /// \brief Returns the server manager that is managing this game
+    /// \return Reference to server manager
+    ///
+    ServerManager& get_server_manager() const { return lobby->app->server_manager; }
 
     ///
     /// \brief Creates a GamePeer that can later be added to the game

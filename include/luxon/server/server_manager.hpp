@@ -18,6 +18,9 @@
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
 #include "http_server.hpp"
 #endif
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+#include "command_restarter.hpp"
+#endif
 #ifdef LUXON_SERVER_MULTITHREADED
 #include "sidethread.hpp"
 #endif
@@ -47,7 +50,7 @@ struct Peer;
 struct PeerPersistent;
 class App;
 
-#ifdef LUXON_SERVER_ENABLE_COROUTINES
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
 template <typename T> using HandlerPtr = std::shared_ptr<T>;
 #else
 template <typename T> using HandlerPtr = std::unique_ptr<T>;
@@ -204,6 +207,11 @@ private:
     common::Timer enet_metrics_last_tick_;
 #endif
 
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+    std::unique_ptr<CommandRestarter> active_command_restarter_;
+    bool active_command_restarter_allowed_ = false;
+#endif
+
     bool running_ = true;
 
     bool enable_ipv6_ = true;
@@ -270,45 +278,6 @@ public:
         scheduled_tasks_.push({target_time, std::move(callback)});
     }
 
-#ifdef LUXON_SERVER_ENABLE_COROUTINES
-#ifdef LUXON_SERVER_MULTITHREADED
-    ///
-    /// \brief Enqueues the given function in a side thread
-    /// \param fn Function to call in thread
-    /// \return True if enqueue was successful and given function didn't throw, otherwise false
-    /// \note Non-blocking; Can only be used from inside of a coroutine
-    ///
-    bool call_in_side_thread(const SideThreadPtr& side_thread, std::move_only_function<void()>&& fn);
-    ///
-    /// \brief Calls the given function in a newly created thread
-    /// \param fn Function to call in new thread
-    /// \return True if thread creation was successful and function didn't throw, otherwise false
-    /// \note Non-blocking; Can only be used from inside of a coroutine
-    ///
-    bool call_in_new_thread(std::move_only_function<void()>&& fn);
-#endif
-    ///
-    /// \brief Wait for a while
-    /// \param milliseconds Amount of milliseconds until function returns
-    /// \return True if at least the given amount of time has elapsed, otherwise false
-    /// \note Non-blocking; Can only be used from inside of a coroutine
-    /// \note Might wait up to around 125 milliseconds longer than specified if polling is disabled
-    ///
-    bool delay(unsigned milliseconds);
-
-    ///
-    /// \brief Enqueues a function to be called from main loop, on main thread
-    /// \param fn Function to be called
-    /// \note This function is thread-safe
-    ///
-    void enqueue_in_main_loop(std::move_only_function<void()>&& fn) {
-#ifdef LUXON_SERVER_MULTITHREADED
-        std::scoped_lock L(main_loop_calls_mutex_);
-#endif
-        main_loop_calls_.emplace(std::move(fn));
-    }
-#endif
-
     ///
     /// \brief Gets the external address of a random server of given type
     /// \param server_type Type of server to get
@@ -364,5 +333,37 @@ public:
     ///
     const enet::Metrics& get_enet_metrics() const { return enet_metrics_; }
 #endif
+
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+    ///
+    /// \brief Gets the restarter of the current command and cancel processing as soon as possible
+    ///
+    std::unique_ptr<CommandRestarter> take_command_restarter() {
+        return active_command_restarter_allowed_ ? std::exchange(active_command_restarter_, nullptr) : nullptr;
+    }
+#endif
+
+    ///
+    /// \brief Prevents current command from being restarted
+    ///
+    bool mark_command_committed() {
+        if (should_abort_active_command())
+            return false;
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+        active_command_restarter_allowed_ = false;
+#endif
+        return true;
+    }
+
+    ///
+    /// \brief Checks if processing of current command is to be aborted
+    ///
+    bool should_abort_active_command() const {
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+        return active_command_restarter_ == nullptr;
+#else
+        return false;
+#endif
+    }
 };
 } // namespace server

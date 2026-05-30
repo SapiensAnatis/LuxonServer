@@ -185,6 +185,10 @@ void HandlerBase::HandleInitRequest(ser::InitMessage&& req, const enet::EnetComm
     // Try to create new protocol implementation for given version
     auto protocol = ser::IProtocol::make(req.protocol_major, req.protocol_minor);
 
+    // No turning back
+    if (!server_manager_.mark_command_committed())
+        return;
+
     // Answer init request
     if (protocol) {
         proto_ = std::move(protocol);
@@ -201,6 +205,10 @@ void HandlerBase::HandleOperationRequest(ser::OperationRequestMessage&& req, boo
 
     // Only answer unknown operations on channel 0
     if (cmd_header.channel_id != 0)
+        return;
+
+    // No turning back
+    if (!server_manager_.mark_command_committed())
         return;
 
     // Handle authentication requests that are coming through despite peer already being authenticated
@@ -222,6 +230,10 @@ void HandlerBase::HandleInternalOperationRequest(ser::InternalOperationRequestMe
     ZoneScoped;
 
     if (cmd_header.channel_id != 0)
+        return;
+
+    // No turning back
+    if (!server_manager_.mark_command_committed())
         return;
 
     if (req.operation_code == ICodes::IOpInitEncryption) {
@@ -254,7 +266,7 @@ void HandlerBase::HandleInternalOperationRequest(ser::InternalOperationRequestMe
         // Quietly process transport protocol tell
         req.parameters[ICodes::IKeyTransportProtocol].store_if(reinterpret_cast<uint8_t&>(peer_->transport_protocol));
         peer_->log->info("Got informed about transport protocol: {}", magic_enum::enum_name(peer_->transport_protocol));
-    } else {     
+    } else {
         // Answer unknown operation
         const ser::OperationResponseMessage resp{.operation_code = req.operation_code,
                                                  .return_code = ErrorCodes::Core::OperationInvalid,
@@ -267,6 +279,9 @@ void HandlerBase::HandleInternalOperationRequest(ser::InternalOperationRequestMe
 void HandlerBase::send(const ser::ByteArray& payload, const enet::EnetSendOptions& opt) { peer_->send(payload, opt); }
 
 void HandlerBase::send(const std::expected<ser::ByteArray, ser::Error>& expected_payload, const enet::EnetSendOptions& opt) {
+    if (!server_manager_.mark_command_committed())
+        return;
+
     if (!expected_payload)
         peer_->log->error("Failed to serialize data: {}", expected_payload.error().message);
     else

@@ -41,16 +41,14 @@ option(LUXON_SERVER_EXPOSE_FULL_FFI "Build with full FFI interface exposed" OFF)
 
 option(LUXON_SERVER_HOOKPOINTS "Allows library user or plugins to hook into specific parts of Luxon Server" OFF)
 option(LUXON_SERVER_ENABLE_PLUGINS "Enable use of plugins" OFF)
+option(LUXON_SERVER_ENABLE_COMMAND_RESTARTER "Allow commands to be restarted later for better async support")
 
 if (LUXON_SERVER_EXPOSE_FULL_FFI)
     set(LUXON_SERVER_BUILD_FFI ON CACHE BOOL "Builds shared library with C FFI" FORCE)
     set(LUXON_SERVER_HOOKPOINTS ON CACHE BOOL "Allows library user or plugins to hook into specific parts of Luxon Server" FORCE)
     set(LUXON_SERVER_ENABLE_PLUGINS ON CACHE BOOL "Enable use of plugins" FORCE)
+    set(LUXON_SERVER_ENABLE_COMMAND_RESTARTER ON CACHE BOOL "Allow commands to be restarted later for better async support" FORCE)
 endif()
-
-cmake_dependent_option(LUXON_SERVER_ENABLE_COROUTINES
-    "Enable execution of handler code in coroutines" OFF
-    "LUXON_SERVER_ENABLE_PLUGINS;NOT LUXON_SERVER_BUILD_FFI;NOT WASI" OFF)
 
 # Basic defines
 set(WEB_ROOT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/web")
@@ -223,10 +221,9 @@ if (LUXON_SERVER_ENABLE_PLUGINS)
     endif()
 endif()
 
-if (LUXON_SERVER_ENABLE_COROUTINES)
-    CPMAddPackage("gl:niansa/minicoropp@1.0")
-    target_link_libraries(luxon_server_lib PUBLIC minicoropp)
-    target_compile_definitions(luxon_server_lib PUBLIC LUXON_SERVER_ENABLE_COROUTINES)
+if (LUXON_SERVER_ENABLE_COMMAND_RESTARTER)
+    target_sources(luxon_server_lib PRIVATE include/luxon/server/command_restarter.hpp src/command_restarter.cpp)
+    target_compile_definitions(luxon_server_lib PUBLIC LUXON_SERVER_ENABLE_COMMAND_RESTARTER)
 endif()
 
 if (LUXON_SERVER_USE_SPDLOG)

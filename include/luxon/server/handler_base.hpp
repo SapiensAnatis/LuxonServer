@@ -32,6 +32,7 @@ public:
     virtual void HandleInternalOperationRequest(ser::InternalOperationRequestMessage&& req, bool is_encrypted, const enet::EnetCommandHeader& cmd_header);
 
     const std::shared_ptr<Peer>& get_peer() const { return peer_; }
+    ServerManager& get_server_manager() const { return server_manager_; }
 
     void send(const ser::ByteArray& payload, const enet::EnetSendOptions& opt = {0});
     void send(const std::expected<ser::ByteArray, ser::Error>& expected_payload, const enet::EnetSendOptions& opt = {0});

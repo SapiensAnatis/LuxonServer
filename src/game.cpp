@@ -56,10 +56,11 @@ std::expected<ser::ByteArray, ser::Error> Event::get_cached_data(ser::IProtocol&
 }
 
 Game::~Game(){// Call into plugins
-              GAME_PLUGINS_INVOKE({
-                  OnCloseGameCallInfo info{.failed_on_create = last_actor_id == 0};
-                  execute_plugin_chain(&PluginBase::OnCloseGame, info);
-              })}
+    GAME_PLUGINS_INVOKE({
+        OnCloseGameCallInfo info{.failed_on_create = last_actor_id == 0};
+        execute_plugin_chain(&PluginBase::OnCloseGame, info);
+    });
+}
 
 GamePeer Game::create_peer(std::shared_ptr<Peer> peer) {
     ZoneScoped;
@@ -169,6 +170,7 @@ restart:
             BeforeCloseGameCallInfo info{.failed_on_create = last_actor_id == 0};
             execute_plugin_chain(&PluginBase::BeforeCloseGame, info);
         })
+        true;
     } else if (leaving_actor_id == master_actor) {
         // Lobby is not empty yet, but there's no master assigned anymore, so assign a new one
         master_actor = peers.front().actor_id;

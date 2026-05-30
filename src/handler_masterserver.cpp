@@ -97,6 +97,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             if (resp.return_code == ErrorCodes::Core::Ok)
                 resp.parameters[DictKeyCodes::LoadBalancing::Position] = static_cast<int32_t>(0);
 
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
+
             // Send response
             send(proto_->Serialize(resp, is_encrypted));
 
@@ -132,6 +136,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                 return;
             }
 
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
+
             // Join the lobby
             join_lobby(std::move(*joined_lobby));
             peer_->log->info("Joined lobby: {}", joined_lobby_->lobby->name.empty() ? "(unnamed)" : joined_lobby_->lobby->name);
@@ -145,6 +153,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
 
         case OpCodes::Lobby::LeaveLobby: {
             ZoneScopedN("HandleOperationRequest_LeaveLobby");
+
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Try to leave lobby
             std::shared_ptr<Lobby> lobby;
@@ -185,6 +197,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                     return false;
                 return true;
             });
+
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Send response
             send(proto_->Serialize(resp));
@@ -237,6 +253,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                 resp.debug_message = e.what();
             }
 
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
+
             // Send response
             send(proto_->Serialize(resp));
             return;
@@ -284,17 +304,22 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             }
             auto& game = *game_expected;
 
-            // Join the game
-            peer_->persistent->current_game = game;
-
-            // Build and send response
+            // Build response
             ser::OperationResponseMessage resp{.operation_code = OpCodes::Matchmaking::CreateGame, .return_code = ErrorCodes::Core::Ok};
             resp.parameters[DictKeyCodes::LoadBalancing::Address] = server_manager_.get_endpoint_of(ServerType::GameServer, peer_->transport_protocol);
             resp.parameters[DictKeyCodes::GameAndActor::GameId] = game->id;
             resp.parameters[DictKeyCodes::LoadBalancing::Token] = peer_->persistent->token;
 
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
+
+            // Send response
             send(proto_->Serialize(resp));
+
+            // Join the game
             peer_->log->info("Joining newly created game: {}", game->id);
+            peer_->persistent->current_game = game;
 
             return;
         }
@@ -372,6 +397,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                     return;
                 }
             }
+
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Make token valid for this game
             peer_->persistent->current_game = game;
@@ -507,6 +536,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                 selected_game = *game_expected;
             }
 
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
+
             // Make token valid for this game
             peer_->persistent->current_game = selected_game;
 
@@ -536,6 +569,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                 send(proto_->Serialize(params.error()));
                 return;
             }
+
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Does the client want lobby stats?
             wants_app_stats_ = params->get<DictKeyCodes::AuthAndLobby::LobbyStats>().value_or(true);
@@ -591,6 +628,9 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
 
             resp.parameters[DictKeyCodes::AuthAndLobby::FindFriendsResponseOnlineList] = std::move(online_list);
             resp.parameters[DictKeyCodes::AuthAndLobby::FindFriendsResponseRoomIdList] = std::move(room_list);
+
+            if (!server_manager_.mark_command_committed())
+                return;
 
             send(proto_->Serialize(resp));
             return;

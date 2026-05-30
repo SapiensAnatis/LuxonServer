@@ -10,20 +10,10 @@
  * This file relies on the following preprocessor macros to control build variants,
  * memory management strategies, concurrency features, and I/O models:
  *
- * LUXON_SERVER_ENABLE_COROUTINES
- * Enables the asynchronous coroutine architecture.
- * - Switches connection handlers (HandlerPtr) from std::unique_ptr to std::shared_ptr
- *   to support the shared lifecycle ownership required by detached coroutines.
- * - Wraps incoming ENet packet handling (HandleENetCommand) inside a coroutine
- *   (minicoro), allowing handlers to yield execution without blocking the server thread.
- * - Exposes non-blocking execution yield utilities like `delay` and thread-safe main-loop queues.
- *
  * LUXON_SERVER_MULTITHREADED
  * Toggles multithreading capabilities and thread-safe synchronization.
  * - Enables the `main_loop_calls_` queue and protects it via `main_loop_calls_mutex_`
  *   to safely dispatch tasks from arbitrary threads back onto the main loop thread.
- * - When combined with LUXON_SERVER_ENABLE_COROUTINES, enables `call_in_side_thread`
- *   and `call_in_new_thread` to offload heavy tasks and safely resume coroutines upon completion.
  *
  * LUXON_SERVER_ENABLE_SETTINGS_DATABASE
  * Toggles embedded settings database management.
@@ -85,9 +75,6 @@
 #include <algorithm>
 #ifdef LUXON_SERVER_MULTITHREADED
 #include <thread>
-#endif
-#ifdef LUXON_SERVER_ENABLE_COROUTINES
-#include <minicoropp.hpp>
 #endif
 #include <luxon/ser_gp_binary_v18.hpp>
 #include <luxon/ser_encryption.hpp>
@@ -342,79 +329,6 @@ ServerManager::ServerManager(ServerManagerConfig config) : endpoints(std::move(c
     setup();
 }
 
-#ifdef LUXON_SERVER_ENABLE_COROUTINES
-#ifdef LUXON_SERVER_MULTITHREADED
-bool ServerManager::call_in_side_thread(const SideThreadPtr& side_thread, std::move_only_function<void()>&& fn) {
-    if (!side_thread)
-        return false;
-
-    auto *coro = minicoro::Coroutine::current();
-    if (!coro)
-        return false;
-
-    bool ok = false;
-    side_thread->enqueue([&, this] {
-        try {
-            fn();
-            ok = true;
-        } catch (const std::exception& e) {
-            log_->error("Unhandled exception in side thread: {}: {}", typeid(e).name(), e.what());
-        } catch (...) {
-            log_->error("Unknown unhandled exception in side thread!");
-        }
-
-        enqueue_in_main_loop([coro, this] {
-            if (!coro->resume())
-                log_->error("Failed to resume coroutine from side thread!");
-        });
-    });
-
-    coro->yield();
-    return ok;
-}
-
-bool ServerManager::call_in_new_thread(std::move_only_function<void()>&& fn) {
-    auto *coro = minicoro::Coroutine::current();
-    if (!coro)
-        return false;
-
-    bool ok = false;
-    std::thread([&, this] {
-        try {
-            fn();
-            ok = true;
-        } catch (const std::exception& e) {
-            log_->error("Unhandled exception in side thread: {}: {}", typeid(e).name(), e.what());
-        } catch (...) {
-            log_->error("Unknown unhandled exception in side thread!");
-        }
-
-        enqueue_in_main_loop([coro, this] {
-            if (!coro->resume())
-                log_->error("Failed to resume coroutine from side thread!");
-        });
-    }).detach();
-
-    coro->yield();
-    return ok;
-}
-#endif
-
-bool ServerManager::delay(unsigned milliseconds) {
-    auto *coro = minicoro::Coroutine::current();
-    if (!coro)
-        return false;
-
-    add_scheduled_task(milliseconds, [coro, this] {
-        if (!coro->resume())
-            log_->error("Failed to resume coroutine from scheduled task!");
-    });
-
-    coro->yield();
-    return true;
-}
-#endif
-
 const std::string& ServerManager::get_endpoint_of(ServerType server_type, ServerProtocol server_proto) {
     ZoneScoped;
     std::vector<const std::string *> candidates;
@@ -496,26 +410,6 @@ bool ServerManager::run_once() {
         const bool slow_update = last_slow_update_.get() > 250;
         if (slow_update)
             last_slow_update_.reset();
-#ifdef LUXON_SERVER_ENABLE_COROUTINES
-        // Run stuff that's queued to run in the main loop asap
-        while (true) {
-            // Get next callback safely
-            std::move_only_function<void()> fn{};
-            {
-#ifdef LUXON_SERVER_MULTITHREADED
-                std::scoped_lock L(main_loop_calls_mutex_);
-#endif
-                if (!main_loop_calls_.empty()) {
-                    fn = std::move(main_loop_calls_.front());
-                    main_loop_calls_.pop();
-                }
-            }
-            if (fn)
-                fn();
-            else
-                break;
-        }
-#endif
 
         // Dispatch and handle incoming application messages
         uint32_t remaining_timeout = tick_time_budget_;
@@ -654,7 +548,7 @@ void ServerManager::setup() {
             handler->set_allow_unsolicited(config.allow_unsolicited);
 
             // Handler pointer must be owning with plugins enabled to ensure no destruction while coroutine is active
-#ifdef LUXON_SERVER_ENABLE_COROUTINES
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
             auto handler_ptr = handler;
 #else
             auto *handler_ptr = handler.get();
@@ -705,29 +599,20 @@ void ServerManager::setup() {
                     }
                 }
 #endif
-#ifdef LUXON_SERVER_ENABLE_COROUTINES
-                if (!(new minicoro::Coroutine([handler, cmd = std::move(cmd), this](minicoro::Coroutine& coro) mutable {
-                         // Make coroutine own itself
-                         auto owned_coro =
-                             std::unique_ptr<minicoro::Coroutine, std::function<void(minicoro::Coroutine *)>>(&coro, [this](minicoro::Coroutine *coro) {
-                                 // Discard coroutine on main thread, where it can be destroyed safely
-                                 enqueue_in_main_loop([coro] { delete coro; });
-                             });
+
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+                active_command_restarter_ = CommandRestarter::create(handler, cmd);
+                active_command_restarter_allowed_ = true;
 #endif
-
-                         try {
-                             handler->HandleENetCommand(std::move(cmd));
-                         } catch (const std::exception& e) {
-                             auto& peer = *handler->get_peer();
-                             peer.log->critical("Disconnecting due to uncaught exception in ENet command handler: {}", e.what());
-                             peer.disconnect();
-                         }
-
-#ifdef LUXON_SERVER_ENABLE_COROUTINES
-                     }))->resume()) {
-                    peer->log->critical("Disconnecting because ENet command handler coroutine couldn't be started");
-                    peer->disconnect();
+                try {
+                    handler->HandleENetCommand(std::move(cmd));
+                } catch (const std::exception& e) {
+                    auto& peer = *handler->get_peer();
+                    peer.log->critical("Disconnecting due to uncaught exception in ENet command handler: {}", e.what());
+                    peer.disconnect();
                 }
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+                mark_command_committed();
 #endif
             };
 

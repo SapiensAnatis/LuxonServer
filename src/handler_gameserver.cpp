@@ -10,6 +10,7 @@
 #include "global.hpp"
 #include "data_model.hpp"
 #include "authentication.hpp"
+#include "server_manager.hpp"
 
 #include <ranges>
 #include <luxon/ser_interface.hpp>
@@ -58,8 +59,11 @@ void GameServerHandler::HandleDisconnect() {
                     OnLeaveGameCallInfo info{.leaver = game_peer_};
                     ser::OperationRequestMessage req{.operation_code = 0};
                     game->execute_plugin_chain(&PluginBase::OnLeave, req, info);
-                })
+                });
             }
+
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Remove peer
             const int32_t actor_id = game_peer_ ? game_peer_->actor_id : 0;
@@ -127,6 +131,10 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             if (resp.return_code == ErrorCodes::Core::Ok)
                 resp.parameters[DictKeyCodes::LoadBalancing::Position] = static_cast<int32_t>(0);
 
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
+
             // Send response
             send(proto_->Serialize(resp, is_encrypted));
 
@@ -184,6 +192,10 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                     return;
                 }
             });
+
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Make sure client isn't attempting to raise a Photon event
             if (event.code > 220) {
@@ -299,8 +311,9 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             }
 
             if (is_master) {
-                // Load given plugins if creating room
-                for (const std::string& plugin_name : params->get<DictKeyCodes::RpcAndPlugins::Plugins>()) {
+                if (get_game()->plugins.empty()) {
+                    // Load given plugins if creating room
+                    for (const std::string& plugin_name : params->get<DictKeyCodes::RpcAndPlugins::Plugins>()) {
 #ifdef LUXON_SERVER_ENABLE_PLUGINS
                     auto plugin = game_plugins::registry::instantiate(get_game().get(), plugin_name);
                     if (!plugin) {
@@ -312,6 +325,7 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
 #else
                 peer_->log->warn("Attempting to load game plugin when plugins are disabled: {}", plugin_name);
 #endif
+                    }
                 }
             } else {
                 // Verify join if joining existing room
@@ -345,7 +359,11 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                     send(proto_->Serialize(resp));
                     return;
                 }
-            })
+            });
+
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Apply game settings
             if (is_master) {
@@ -401,7 +419,7 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                     game_peer.actor_props.erase(ActorProps::UserId);
 
                 broadcast_actor_props = info.broadcast_actor_props.value_or(true);
-            })
+            });
 
             // Add peer to game
             game_peer_ = game->add_peer(std::move(game_peer));
@@ -469,12 +487,15 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                     send(proto_->Serialize(resp));
                     return;
                 }
-            })
+            });
+
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Send success response
             const ser::OperationResponseMessage resp{.operation_code = OpCodes::Lite::Leave, .return_code = ErrorCodes::Core::Ok};
             send(proto_->Serialize(resp));
-            return;
 
             // Disconnect, handler will do the rest
             has_left = true;
@@ -517,6 +538,10 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                 broadcast = info.broadcast;
                 actor_id = info.target_actor_id;
             });
+
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Set actor or game properties
             bool ok = true;
@@ -571,6 +596,10 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                 return;
             }
 
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
+
             // Remove first, then add (TODO: Verify order)
             for (const uint8_t group : params->get<DictKeyCodes::RoutingAndEvents::Remove>())
                 game_peer_->interest_groups.reset(group);
@@ -598,6 +627,10 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                 send(proto_->Serialize(resp));
                 return;
             }
+
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
 
             // Set as current game and disallow unsolicited join to prevent infinite recursion if game is nullptr
             peer_->persistent->current_game = game_res->second.lock();
