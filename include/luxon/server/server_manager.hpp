@@ -204,7 +204,7 @@ private:
     common::Timer enet_metrics_last_tick_;
 #endif
 
-    bool running_ = false;
+    bool running_ = true;
 
     bool enable_ipv6_ = true;
     unsigned max_connections_ = 0;

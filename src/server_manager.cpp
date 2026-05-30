@@ -462,6 +462,8 @@ void ServerManager::run() {
 }
 
 bool ServerManager::run_once() {
+    running_ = true;
+
     ZoneScoped;
     {
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
