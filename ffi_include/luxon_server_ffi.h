@@ -70,6 +70,22 @@ typedef enum { LUXON_DELIVERY_UNRELIABLE = 0, LUXON_DELIVERY_RELIABLE = 1, LUXON
 
 typedef enum { LUXON_RECEIVERS_ALL = 0, LUXON_RECEIVERS_GROUP = 1, LUXON_RECEIVERS_ACTORS = 2 } LuxonEventReceiversType;
 
+typedef enum {
+    LUXON_PLUGIN_RESULT_CONTINUE = 0,
+    LUXON_PLUGIN_RESULT_FAIL = 1,
+    LUXON_PLUGIN_RESULT_CANCEL = 2
+} LuxonGamePluginResult;
+
+typedef enum {
+    LUXON_LOG_LEVEL_TRACE = 0,
+    LUXON_LOG_LEVEL_DEBUG = 1,
+    LUXON_LOG_LEVEL_INFO = 2,
+    LUXON_LOG_LEVEL_WARN = 3,
+    LUXON_LOG_LEVEL_ERROR = 4,
+    LUXON_LOG_LEVEL_CRITICAL = 5,
+    LUXON_LOG_LEVEL_OFF = 6
+} LuxonLogLevel;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
