@@ -9,6 +9,7 @@ The goal of this project is to be a drop-in replacement for the official server 
 - [Configuration](#configuration)
 - [Usage](#features)
 - [Platform Support](#platform-support)
+- [Foreign Function Interface (FFI)](#foreign-function-interface-ffi)
 - [FAQ](#faq)
 
 ---
@@ -153,6 +154,18 @@ Compilation to C and then to old platforms is also possible, including:
 
 Note that I can't "officially" support the latter 2 platforms. Expect them to run non-optimally. Still free to create an issue if you see any problems with them.
 
+## Foreign Function Interface (FFI)
+
+Luxon Server implements a "Foreign Function Interface". That means it can optionally expose a simple interface for controlling its operation, usable from almost any programming language. This means you can **embed the server**, **write plugins in languages other than C++**, and more.
+
+It exposes and accepts Photon/Luxon ser messages and values in a format documented here: https://gitlab.com/luxon_project/Luxon/-/blob/master/doc/ipc_binary.md
+
+This interface is also available with Luxon Server built as a WebAssembly module.
+
+I consider the ABI to be reasonably stable, but I recommend pinning Luxon Server to a specific commit or tag when publishing your own bindings!
+
+For enabling it, see [Building](#building).
+
 ## FAQ
 
 **Q:** Why is the server completely single-threaded?\
@@ -162,4 +175,4 @@ Note that I can't "officially" support the latter 2 platforms. Expect them to ru
 **A:** I have looked into spawning more processes running GameServer instances, as an alternative to multi-threading. However, I am strictly against supporting load balancing across different systems. I do NOT want to agitate Exit Games by releasing a competitive product.
 
 **Q:** Are you going to write bindings for writing plugins in C#, Python, Javascript, ...?\
-**A:** Probably a few simple ones, like for Python. An FFI interface exists now, and I consider it to be quite stable. When writing your own bindings however, be sure to pin luxonserver to a specific commit or tag to avoid any breakages that may occur anyways. I can't guarantee full, complete FFI ABI stability yet.
+**A:** An FFI interface exists now, and I consider it to be quite stable. I might implement bare Python bindings in the future for reference. When writing your own bindings however, be sure to pin luxonserver to a specific commit or tag to avoid any breakages that may occur anyways. I can't guarantee full, complete FFI ABI stability yet.
