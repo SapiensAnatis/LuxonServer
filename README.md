@@ -87,15 +87,19 @@ Possible compile time options:
  - **`LUXON_SERVER_ENABLE_WEBSERVER`** (default: `ON`): Enable the built-in webserver including the web interface
  - **`LUXON_SERVER_ENABLE_PLUGINS`** (default: `OFF`): Enables plugin system
  - **`LUXON_PLUGINS`** (default: empty): Semicolon separated list of CMake projects to configure containing `luxon_register_plugin()` CMake calls for statically linking a plugin into Luxon Server
- - **`LUXON_SERVER_ENABLE_COROUTINES`** (default: `OFF`): Enables coroutines, potentially required for some plugins, makes plugin development easier. *Only available if `LUXON_SERVER_ENABLE_PLUGINS` is `ON`. Strictly disabled if `LUXON_SERVER_BUILD_FFI` is `ON`*
  - **`LUXON_SERVER_BUILD_FFI`** (default: `OFF`): Builds the FFI library
- - **`LUXON_SERVER_EXPOSE_FULL_FFI`** (default: `OFF`): Enables all features required to expose the *full* FFI. *Only available if `LUXON_SERVER_BUILD_FFI` is `ON`. Forces `LUXON_SERVER_ENABLE_PLUGINS` and `LUXON_SERVER_HOOKPOINTS` to be `ON`*
+ - **`LUXON_SERVER_EXPOSE_FULL_FFI`** (default: `OFF`): Enables all features required to expose the *full* FFI. Forces `LUXON_SERVER_BUILD_FFI`, `LUXON_SERVER_ENABLE_PLUGINS`, `LUXON_SERVER_HOOKPOINTS`, and `LUXON_SERVER_ENABLE_COMMAND_RESTARTER` to be `ON`. Strictly disables `LUXON_SERVER_USE_SPDLOG`*
  - **`LUXON_SERVER_POLL`** (default: `OFF`): Polls sockets blindly and rapidly, less efficient and slower
  - **`LUXON_SERVER_HOOKPOINTS`** (default: `OFF`, forced `ON` if full FFI is exposed): Useful when linking LuxonServer as a library, allows hooking into some parts of the server via `ServerManager::hookpoints` (see [hookpoints.hpp](https://github.com/niansa/LuxonServer/blob/master/include/luxon/server/hookpoints.hpp))
- - **`LUXON_USE_EMBED_RESOURCE`** (default: `OFF` except on Windows and WebAssembly): Uses the [embedresource](https://github.com/ankurvdev/embedresource) library for binary embedding instead of inline assembly
+ - **`LUXON_SERVER_ENABLE_COMMAND_RESTARTER`** (default: `OFF`, forced `ON` if full FFI is exposed): Allow commands to be restarted later for better async support
+ - **`LUXON_USE_EMBED_RESOURCE`** (default: `OFF` except on MSVC and WebAssembly): Uses the [embedresource](https://github.com/ankurvdev/embedresource) library for binary embedding instead of inline assembly
  - **`LUXON_SERVER_TRACY`** (default: `OFF`): Links and enables [Tracy](https://github.com/wolfpld/tracy) client
+ - **`LUXON_SERVER_TRACY_ON_DEMAND`** (default: `ON`): Only collect tracy data with profiler server connected. *Only available if `LUXON_SERVER_TRACY` is `ON`*
  - **`LUXON_ENET_ENABLE_METRICS`** (default: `OFF`): Collects more metrics available as a Prometheus endpoint on webserver (`/metrics`), ready for use with provided [Grafana Dashboard](https://github.com/niansa/LuxonServer/blob/master/grafana-dashboard.json)
- - **`LUXON_USE_TOMCRYPT`** (default: `OFF`): Use alternative encryption library with wider compatibility
+ - **`LUXON_SERVER_USE_SPDLOG`** (default: `ON` on Linux/Windows/macOS/BSD, `OFF` otherwise): Use spdlog for Luxon server. *Strictly disabled if `LUXON_SERVER_EXPOSE_FULL_FFI` is `ON`*
+ - **`LUXON_SERVER_USE_SANMAKE`** (default: `ON` on Linux/Windows/macOS/BSD, `OFF` otherwise): Use basic sanitizers for Luxon server
+ - **`LUXON_SERVER_ENABLE_SETTINGS_DATABASE`** (default: `ON` on Linux/Windows/macOS/BSD, `OFF` otherwise): Build Luxon Server with settings storage database support enabled
+ - **`LUXON_USE_TOMCRYPT`** (default: `OFF` on supported desktop platforms): Use alternative encryption library with wider compatibility
  
 ### Configuration
 
@@ -125,7 +129,7 @@ Once this is set, the game will connect to Luxon Server thinking it is the offic
 * **Load Balancing Logic:** Full implementation of the Name/Master/Game server flow.
 * **Web Dashboard:** An embedded HTTP server (default port 5088) provides a real-time monitor. It shows active connections, packet loss, round-trip times, and a visual graph of server load/busy time at path `/stats`.
 * **Peer Persistence:** Handles player authentication tokens and state transfer between Master and Game servers.
-* **Plugin System (Optional):** If you need custom server-side logic, Luxon supports plugins written in C++ using coroutines. This is disabled by default in CMake (LUXON_SERVER_ENABLE_PLUGINS=OFF) to keep the build lightweight, strictly single-threaded and coroutine-free.
+* **Plugin System (Optional):** If you need custom server-side logic, Luxon supports plugins written in C++. This is disabled by default in CMake (LUXON_SERVER_ENABLE_PLUGINS=OFF) to keep the build lightweight, strictly single-threaded.
 
 ## Platform Support
 
@@ -159,6 +163,3 @@ Note that I can't "officially" support the latter 2 platforms. Expect them to ru
 
 **Q:** Are you going to write bindings for writing plugins in C#, Python, Javascript, ...?\
 **A:** Probably a few simple ones, like for Python. An FFI interface exists now, and I consider it to be quite stable. When writing your own bindings however, be sure to pin luxonserver to a specific commit or tag to avoid any breakages that may occur anyways. I can't guarantee full, complete FFI ABI stability yet.
-
-**Q:** Isn't it a bad idea to provide blocking functions (functions that only return when an operation has completed) in `ServerManager` when the server is purely single-threaded?\
-**A:** This is fairly well hidden, but plugins actually always run in coroutines. These functions suspend the coroutine until the work is complete.
