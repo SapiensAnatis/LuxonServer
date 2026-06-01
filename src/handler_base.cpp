@@ -279,9 +279,6 @@ void HandlerBase::HandleInternalOperationRequest(ser::InternalOperationRequestMe
 void HandlerBase::send(const ser::ByteArray& payload, const enet::EnetSendOptions& opt) { peer_->send(payload, opt); }
 
 void HandlerBase::send(const std::expected<ser::ByteArray, ser::Error>& expected_payload, const enet::EnetSendOptions& opt) {
-    if (!server_manager_.mark_command_committed())
-        return;
-
     if (!expected_payload)
         peer_->log->error("Failed to serialize data: {}", expected_payload.error().message);
     else
