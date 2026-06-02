@@ -599,11 +599,9 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                 return;
             }
 
-            // No turning back
             if (!server_manager_.mark_command_committed())
                 return;
 
-            // Remove first, then add (TODO: Verify order)
             if (const auto *removes = params->get<DictKeyCodes::RoutingAndEvents::Remove>()) {
                 if (removes->empty()) {
                     game_peer_->interest_groups.reset();
