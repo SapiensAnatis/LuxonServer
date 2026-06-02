@@ -186,7 +186,7 @@ FFI_FUNCTION(void, destroyServerManagerConfig, (ServerManagerConfigHandle config
 FFI_FUNCTION(ServerManagerConfigHandle, loadServerManagerConfigFromFile, (const char *config_file_path), config_file_path)
 FFI_FUNCTION(ServerManagerConfigHandle, parseServerManagerConfig, (const char *yaml_config_contents), yaml_config_contents)
 FFI_FUNCTION(void, serverManagerConfigAddServer, (ServerManagerConfigHandle config, LuxonServerType type, uint16_t port), config, type, port)
-FFI_FUNCTION(void, serverManagerConfigAddServerWithUdp,
+FFI_FUNCTION(void, serverManagerConfigAddServerAndEndpoint,
              (ServerManagerConfigHandle config, LuxonServerType type, uint16_t port, const char *external_udp_address), config, type, port,
              external_udp_address)
 FFI_FUNCTION(void, serverManagerConfigAddEndpoint, (ServerManagerConfigHandle config, LuxonServerType type, LuxonServerProtocol protocol, const char *address),

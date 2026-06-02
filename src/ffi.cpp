@@ -1454,7 +1454,7 @@ void serverManagerConfigAddServer(ServerManagerConfigHandle config, LuxonServerT
     });
 }
 
-void serverManagerConfigAddServerWithUdp(ServerManagerConfigHandle config, LuxonServerType type, uint16_t port, const char *external_udp_address) {
+void serverManagerConfigAddServerAndEndpoint(ServerManagerConfigHandle config, LuxonServerType type, uint16_t port, const char *external_udp_address) {
     if (!external_udp_address)
         return;
     ffi_safe_exec([=] {
