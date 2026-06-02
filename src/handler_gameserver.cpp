@@ -41,7 +41,7 @@ using SetProperties =
           Parameter<ser::HashtablePtr, Properties::ExpectedValues, false, DefaultInit>, Parameter<bool, RoutingAndEvents::Broadcast, false, DefaultConst<true>>,
           Parameter<int32_t, GameAndActor::ActorNo, false, DefaultConst<0>>>;
 
-using ChangeInterestGroups = Model<Parameter<ser::ByteArray, RoutingAndEvents::Add>, Parameter<ser::ByteArray, RoutingAndEvents::Remove>>;
+using ChangeInterestGroups = Model<Parameter<ser::ByteArray, RoutingAndEvents::Add, true>, Parameter<ser::ByteArray, RoutingAndEvents::Remove, true>>;
 } // namespace models
 
 void GameServerHandler::HandleDisconnect() {
@@ -604,10 +604,22 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                 return;
 
             // Remove first, then add (TODO: Verify order)
-            for (const uint8_t group : params->get<DictKeyCodes::RoutingAndEvents::Remove>())
-                game_peer_->interest_groups.reset(group);
-            for (const uint8_t group : params->get<DictKeyCodes::RoutingAndEvents::Add>())
-                game_peer_->interest_groups.set(group);
+            if (const auto *removes = params->get<DictKeyCodes::RoutingAndEvents::Remove>()) {
+                if (removes->empty()) {
+                    game_peer_->interest_groups.reset();
+                } else {
+                    for (const uint8_t group : *removes)
+                        game_peer_->interest_groups.reset(group);
+                }
+            }
+            if (const auto *adds = params->get<DictKeyCodes::RoutingAndEvents::Add>()) {
+                if (adds->empty()) {
+                    game_peer_->interest_groups.set();
+                } else {
+                    for (const uint8_t group : *adds)
+                        game_peer_->interest_groups.set(group);
+                }
+            }
 
             return;
         }
