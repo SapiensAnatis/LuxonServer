@@ -99,6 +99,12 @@ typedef struct {
 #include "luxon_server_ffi_imports.inc"
 } LuxonServerImports;
 
+/**
+ * @brief Bootstraps the function pointer table for dynamic library builds
+ * * Required for non-WASM executions so the core server can route function calls
+ * into the loaded plugin's implementations dynamically
+ * * @param imports A pointer to the populated LuxonServerImports structure mapping logic bindings
+ */
 FFI_EXPORT(luxonSetServerImports) void luxonSetServerImports(const LuxonServerImports *imports);
 #endif
 

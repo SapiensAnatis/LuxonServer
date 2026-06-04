@@ -1,0 +1,60 @@
+PROJECT_NAME           = "Luxon Server"
+PROJECT_BRIEF          = "Clean-room reimplementation of the Photon LoadBalancing server"
+
+INPUT                  = src include ffi_include
+RECURSIVE              = YES
+
+EXCLUDE                = build tracy vcpkg libtomcrypt libtommath
+EXCLUDE_PATTERNS       = */build/* */tracy/* */vcpkg/* /*libtomcrypt/* */libtommath/* */sqlite3.c
+
+FILE_PATTERNS          = *.c *.cpp *.h *.hpp *.inc
+EXTENSION_MAPPING      = inc=C
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = "FFI_EXPORT(name)=" \
+                         "FFI_FUNCTION(ret, name, params, ...)=ret name params;" \
+                         "LUXON_SERVER_ENABLE_PLUGINS=1" \
+                         "LUXON_SERVER_ENABLE_HOOKPOINTS=1" \
+                         "LUXON_SERVER_ENABLE_COMMAND_RESTARTER=1" \
+                         "LUXON_SERVER_ENABLE_WEBSERVER=1" \
+                         "LUXON_SERVER_WEB_ROOT=\"web\"" \
+                         "LUXON_SERVER_POLL=1" \
+                         "LUXON_USE_EMBED_RESOURCE=1" \
+                         "LUXON_SERVER_MULTITHREADED=1" \
+                         "LUXON_SERVER_USE_SPDLOG=1" \
+                         "LUXON_SERVER_ENABLE_SETTINGS_DATABASE=1" \
+                         "SQLITE_CUSTOM_INCLUDE=\"sqlite3-config.h\"" \
+                         "NOMINMAX=1" \
+                         "_WASI_EMULATED_PROCESS_CLOCKS=1" \
+                         "_WASI_EMULATED_SIGNAL=1"
+
+FILTER_SOURCE_FILES = YES
+FILTER_PATTERNS = "*/ffi.cpp=./ffi_filter.sh"
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+OPTIMIZE_OUTPUT_FOR_C  = YES
+
+HAVE_DOT               = YES
+DOT_IMAGE_FORMAT       = svg
+DOT_TRANSPARENT        = YES
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+
+QUIET                  = NO
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+
+HTML_EXTRA_STYLESHEET  = doxygen-awesome-css/doxygen-awesome.css \
+                         doxygen-awesome-css/doxygen-awesome-sidebar-only-darkmode-toggle.css
+HTML_COLORSTYLE        = LIGHT
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
