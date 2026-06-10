@@ -997,13 +997,12 @@ void ServerManager::setup() {
                 try {
                     handler->HandleENetCommand(std::move(cmd));
                 } catch (const std::exception& e) {
-                    auto& peer = *handler->get_peer();
-                    peer.log->critical("Disconnecting due to uncaught exception in ENet command handler: {}", e.what());
-                    peer.disconnect();
+                    peer->log->critical("Disconnecting due to uncaught exception in ENet command handler: {}", e.what());
+                    peer->disconnect();
                 }
 #ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
                 if (active_command_restarter_allowed_) {
-                    peer.log->warn("Command did not commit!");
+                    peer->log->warn("Command did not commit!");
                     mark_command_committed();
                 }
 #endif
