@@ -63,6 +63,10 @@
 #include "handler_masterserver.hpp"
 #include "handler_gameserver.hpp"
 #include "yaml.hpp"
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+#include "ipc_codes.hpp"
+#include "pfr_codec.hpp"
+#endif
 
 #include <iostream>
 #include <string_view>
@@ -76,12 +80,15 @@
 #ifdef LUXON_SERVER_MULTITHREADED
 #include <thread>
 #endif
+#include <luxon/common_codes.hpp>
 #include <luxon/ser_gp_binary_v18.hpp>
 #include <luxon/ser_encryption.hpp>
 #include <luxon/visualizer.hpp>
 #include <tracy/Tracy.hpp>
 
 namespace server {
+std::function<void(int)> ServerManager::handle_start_subprocess{};
+
 namespace {
 ServerType StringToServerType(const std::string& str) {
     if (str == "NameServer")
@@ -140,8 +147,6 @@ HandlerPtr<HandlerBase> ServerTypeToHandler(ServerType type, ServerManager& serv
     }
 }
 
-bool IsServerTypeSection(std::string_view key) { return key == "NameServer" || key == "MasterServer" || key == "GameServer"; }
-
 uint8_t NormalizeMaxGamePeers(unsigned value) {
     uint8_t normalized = static_cast<uint8_t>(std::min<unsigned>(value, 255));
     if (normalized == 255)
@@ -149,103 +154,229 @@ uint8_t NormalizeMaxGamePeers(unsigned value) {
     return normalized;
 }
 
-template <typename Fn> void ForEachSequenceItem(Yaml::Node& section, Fn&& fn) {
-    if (!section.IsSequence())
-        return;
-
-    for (auto itemIt = section.Begin(); itemIt != section.End(); itemIt++)
-        fn((*itemIt).second);
+[[noreturn]]
+void ThrowConfigError(std::string_view path, std::string_view message) {
+    throw std::runtime_error(std::format("Config error at {}: {}", path, message));
 }
 
-void ParseServerSection(ServerManagerConfig& config, ServerType current_type, Yaml::Node& section) {
-    struct {
-        bool allow_unsolicited = false;
-        std::string stun_host;
-        uint16_t stun_port = 19302;
-    } state;
+void ExpectMap(Yaml::Node& node, std::string_view path) {
+    if (!node.IsMap())
+        ThrowConfigError(path, "expected a map");
+}
 
-    ForEachSequenceItem(section, [&](Yaml::Node& item) {
-        if (!item["allow_unsolicited"].IsNone())
-            state.allow_unsolicited = item["allow_unsolicited"].As<bool>();
+void ExpectSequence(Yaml::Node& node, std::string_view path) {
+    if (!node.IsSequence())
+        ThrowConfigError(path, "expected a sequence");
+}
 
-        if (!item["stun_server"].IsNone()) {
-            Yaml::Node& stun = item["stun_server"];
+void ValidateAllowedKeys(Yaml::Node& map, std::string_view path, std::initializer_list<std::string_view> allowed) {
+    ExpectMap(map, path);
 
-            if (stun.IsScalar()) {
-                state.stun_host = stun.As<std::string>();
-            } else if (stun.IsSequence()) {
-                ForEachSequenceItem(stun, [&](Yaml::Node& entry) {
-                    if (!entry["host"].IsNone())
-                        state.stun_host = entry["host"].As<std::string>();
+    for (auto it = map.Begin(); it != map.End(); it++) {
+        std::string_view key = (*it).first;
+        if (std::find(allowed.begin(), allowed.end(), key) == allowed.end())
+            ThrowConfigError(path, std::format("unknown key '{}'", key));
+    }
+}
 
-                    if (!entry["port"].IsNone())
-                        state.stun_port = entry["port"].As<uint16_t>();
-                });
-            } else {
-                throw std::runtime_error("stun_server must be either a string or a sequence");
+template <typename T> T ReadNodeScalar(Yaml::Node& node, std::string_view path) {
+    try {
+        return node.As<T>();
+    } catch (const std::exception& e) {
+        ThrowConfigError(path, e.what());
+    }
+}
+
+template <typename T> std::optional<T> ReadOptionalScalar(Yaml::Node& map, const char *key, std::string_view path) {
+    Yaml::Node& child = map[key];
+    if (child.IsNone())
+        return std::nullopt;
+
+    return ReadNodeScalar<T>(child, std::format("{}.{}", path, key));
+}
+
+template <typename T> T ReadRequiredScalar(Yaml::Node& map, const char *key, std::string_view path) {
+    auto value = ReadOptionalScalar<T>(map, key, path);
+    if (!value)
+        ThrowConfigError(path, std::format("missing required key '{}'", key));
+    return std::move(*value);
+}
+
+ServerType ReadRequiredServerType(Yaml::Node& map, const char *key, std::string_view path) {
+    const auto value = ReadRequiredScalar<std::string>(map, key, path);
+    try {
+        return StringToServerType(value);
+    } catch (const std::exception& e) {
+        ThrowConfigError(std::format("{}.{}", path, key), e.what());
+    }
+}
+
+ServerProtocol ReadOptionalProtocol(Yaml::Node& map, const char *key, std::string_view path, ServerProtocol fallback = ServerProtocol::UDP) {
+    auto value = ReadOptionalScalar<std::string>(map, key, path);
+    if (!value)
+        return fallback;
+
+    try {
+        return StringToEndpointProtocol(*value);
+    } catch (const std::exception& e) {
+        ThrowConfigError(std::format("{}.{}", path, key), e.what());
+    }
+}
+
+std::optional<std::string> ReadOptionalExternalAddress(Yaml::Node& map, std::string_view path) {
+    // `address` is accepted as a legacy alias for `external_address`
+    auto external_address = ReadOptionalScalar<std::string>(map, "external_address", path);
+    auto legacy_address = ReadOptionalScalar<std::string>(map, "address", path);
+
+    if (external_address && legacy_address)
+        ThrowConfigError(path, "use only one of 'external_address' or 'address'");
+
+    if (external_address)
+        return std::move(*external_address);
+    if (legacy_address)
+        return std::move(*legacy_address);
+    return std::nullopt;
+}
+
+void ParseStunServer(ServerConfig& server, Yaml::Node& stun_node, const std::string& path) {
+    if (stun_node.IsScalar()) {
+        server.stun_server_host = ReadNodeScalar<std::string>(stun_node, path);
+        server.stun_server_port = 19302;
+        return;
+    }
+
+    if (!stun_node.IsMap())
+        ThrowConfigError(path, "expected a string or a map");
+
+    ValidateAllowedKeys(stun_node, path, {"host", "port"});
+
+    server.stun_server_host = ReadRequiredScalar<std::string>(stun_node, "host", path);
+    if (auto port = ReadOptionalScalar<uint16_t>(stun_node, "port", path))
+        server.stun_server_port = *port;
+}
+
+void ParseServersSection(ServerManagerConfig& config, Yaml::Node& section) {
+    ExpectMap(section, "Servers");
+
+    for (auto it = section.Begin(); it != section.End(); it++) {
+        const std::string type_name = (*it).first;
+        Yaml::Node& list = (*it).second;
+        const std::string type_path = std::format("Servers.{}", type_name);
+
+        ServerType type;
+        try {
+            type = StringToServerType(type_name);
+        } catch (const std::exception& e) {
+            ThrowConfigError(type_path, e.what());
+        }
+
+        ExpectSequence(list, type_path);
+
+        size_t index = 0;
+        for (auto itemIt = list.Begin(); itemIt != list.End(); itemIt++, ++index) {
+            Yaml::Node& item = (*itemIt).second;
+            const std::string item_path = std::format("{}[{}]", type_path, index);
+
+            ValidateAllowedKeys(item, item_path, {"port", "external_address", "address", "allow_unsolicited", "subprocess", "stun_server"});
+
+            ServerConfig server;
+            server.type = type;
+            server.port = ReadRequiredScalar<uint16_t>(item, "port", item_path);
+
+            if (auto allow_unsolicited = ReadOptionalScalar<bool>(item, "allow_unsolicited", item_path))
+                server.allow_unsolicited = *allow_unsolicited;
+
+            if (auto subprocess = ReadOptionalScalar<bool>(item, "subprocess", item_path))
+                server.subprocess = *subprocess;
+
+            if (Yaml::Node& stun_node = item["stun_server"]; !stun_node.IsNone())
+                ParseStunServer(server, stun_node, item_path + ".stun_server");
+
+            auto external_address = ReadOptionalExternalAddress(item, item_path);
+
+            if (external_address) {
+                ServerEndpoint endpoint;
+                endpoint.type = type;
+                endpoint.protocol = ServerProtocol::UDP;
+                endpoint.address = std::move(*external_address);
+
+                config.endpoints.push_back(std::move(endpoint));
             }
-        }
 
-        if (!item["port"].IsNone()) {
-            config.servers.push_back({current_type, item["port"].As<uint16_t>(), state.allow_unsolicited, std::move(state.stun_host), state.stun_port});
-            state = {};
+            config.servers.emplace_back(std::move(server));
         }
-
-        if (!item["address"].IsNone())
-            config.endpoints.push_back({current_type, ServerProtocol::UDP, item["address"].As<std::string>()});
-    });
+    }
 }
 
 void ParseExternalSection(ServerManagerConfig& config, Yaml::Node& section) {
-    ForEachSequenceItem(section, [&](Yaml::Node& item) {
-        ServerType ext_type = ServerType::None;
-        ServerProtocol ext_proto = ServerProtocol::UDP;
-        std::string ext_addr;
-        bool addr_found = false;
+    ExpectSequence(section, "External");
 
-        if (!item["type"].IsNone())
-            ext_type = StringToServerType(item["type"].As<std::string>());
+    size_t index = 0;
+    for (auto it = section.Begin(); it != section.End(); it++, ++index) {
+        Yaml::Node& item = (*it).second;
+        const std::string item_path = std::format("External[{}]", index);
 
-        if (!item["protocol"].IsNone())
-            ext_proto = StringToEndpointProtocol(item["protocol"].As<std::string>());
+        ValidateAllowedKeys(item, item_path, {"type", "protocol", "address"});
 
-        if (!item["address"].IsNone()) {
-            ext_addr = item["address"].As<std::string>();
-            addr_found = true;
-        }
+        ServerEndpoint endpoint;
+        endpoint.type = ReadRequiredServerType(item, "type", item_path);
+        endpoint.protocol = ReadOptionalProtocol(item, "protocol", item_path, ServerProtocol::UDP);
+        endpoint.address = ReadRequiredScalar<std::string>(item, "address", item_path);
 
-        if (ext_type != ServerType::None && addr_found)
-            config.endpoints.push_back({ext_type, ext_proto, std::move(ext_addr)});
-    });
+        config.endpoints.push_back(std::move(endpoint));
+    }
 }
 
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
 void ParseHttpSection(ServerManagerConfig& config, Yaml::Node& section) {
+    ValidateAllowedKeys(section, "HTTP", {"enabled", "active", "address", "port"});
+
+    const bool has_enabled = !section["enabled"].IsNone();
+    const bool has_active = !section["active"].IsNone();
+    if (has_enabled && has_active)
+        ThrowConfigError("HTTP", "use only one of 'enabled' or 'active'");
+
     HttpServerConfig http_cfg;
-    bool seen_any_item = false;
 
-    ForEachSequenceItem(section, [&](Yaml::Node& item) {
-        seen_any_item = true;
+    if (has_enabled)
+        http_cfg.enabled = ReadRequiredScalar<bool>(section, "enabled", "HTTP");
+    else if (has_active)
+        http_cfg.enabled = ReadRequiredScalar<bool>(section, "active", "HTTP");
 
-        if (!item["active"].IsNone())
-            http_cfg.enabled = item["active"].As<bool>();
-        if (!item["address"].IsNone())
-            http_cfg.address = item["address"].As<std::string>();
-        if (!item["port"].IsNone())
-            http_cfg.port = item["port"].As<uint16_t>();
-    });
+    if (auto address = ReadOptionalScalar<std::string>(section, "address", "HTTP"))
+        http_cfg.address = std::move(*address);
 
-    if (seen_any_item)
-        config.http = std::move(http_cfg);
+    if (auto port = ReadOptionalScalar<uint16_t>(section, "port", "HTTP"))
+        http_cfg.port = *port;
+
+    config.http = std::move(http_cfg);
 }
 #endif
 
 template <typename T> T *GetRawPointer(T *ptr) { return ptr; }
-
 template <typename T> T *GetRawPointer(const std::shared_ptr<T>& ptr) { return ptr.get(); }
-
 template <typename T> T *GetRawPointer(const std::unique_ptr<T>& ptr) { return ptr.get(); }
 } // namespace
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+ServerManagerConfig ServerManager::receive_config_from_ipc(IPC& ipc) {
+    std::optional<luxon::ser::Message> msg;
+
+    // Poll the non-blocking IPC socket until the parent transmits the configuration
+    while (!(msg = ipc.receive_message()))
+        ;
+
+    // Expect a GenericValueMessage containing the PFR-encoded ServerManagerConfig
+    if (auto *gvm = std::get_if<luxon::ser::GenericValueMessage>(&msg.value())) {
+        auto decoded = pfr_codec::from_value<ServerManagerConfig>(gvm->value);
+        if (!decoded)
+            throw std::runtime_error("Failed to decode ServerManagerConfig from IPC: " + decoded.error().message);
+        return std::move(*decoded);
+    }
+
+    throw std::runtime_error("Unexpected IPC message type during subprocess initialization");
+}
+#endif
 
 ServerManagerConfig ServerManager::load_config_from_file(const std::string& config_file) { return parse_config(LoadFile(config_file)); }
 
@@ -261,37 +392,43 @@ ServerManagerConfig ServerManager::parse_config(const std::string& config_conten
     if (!root.IsMap())
         throw std::runtime_error("Root of config must be a map");
 
+    if (!root["MaxConnections"].IsNone() && !root["CCU"].IsNone())
+        ThrowConfigError("root", "use only one of 'MaxConnections' or 'CCU'");
+
     ServerManagerConfig config;
 
     for (auto it = root.Begin(); it != root.End(); it++) {
         std::string key = (*it).first;
         Yaml::Node& section = (*it).second;
 
-        if (IsServerTypeSection(key)) {
-            ParseServerSection(config, StringToServerType(key), section);
+        if (key == "Servers") {
+            ParseServersSection(config, section);
         } else if (key == "External") {
             ParseExternalSection(config, section);
         } else if (key == "EnableIPv6") {
-            if (!section.IsNone())
-                config.enable_ipv6 = section.As<bool>();
+            config.enable_ipv6 = ReadNodeScalar<bool>(section, "EnableIPv6");
         } else if (key == "MaxConnections" || key == "CCU") {
-            if (!section.IsNone())
-                config.max_connections = section.As<unsigned>();
+            config.max_connections = ReadNodeScalar<unsigned>(section, key);
         } else if (key == "MaxGamePeers") {
-            if (!section.IsNone())
-                config.max_game_peers = section.As<unsigned>();
+            config.max_game_peers = ReadNodeScalar<unsigned>(section, "MaxGamePeers");
         } else if (key == "TickTimeBudget") {
-            if (!section.IsNone())
-                config.tick_time_budget = section.As<uint32_t>();
+            config.tick_time_budget = ReadNodeScalar<uint32_t>(section, "TickTimeBudget");
 #ifdef LUXON_SERVER_ENABLE_SETTINGS_DATABASE
         } else if (key == "SettingsDatabase") {
-            if (!section.IsNone())
-                config.settings_database_path = section.As<std::string>();
+            config.settings_database_path = ReadNodeScalar<std::string>(section, "SettingsDatabase");
+#else
+        } else if (key == "SettingsDatabase") {
+            // Accepted but ignored when settings DB support is not compiled in
 #endif
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
         } else if (key == "HTTP") {
             ParseHttpSection(config, section);
+#else
+        } else if (key == "HTTP") {
+            // Accepted but ignored when embedded HTTP support is not compiled in
 #endif
+        } else {
+            ThrowConfigError(key, "unknown top-level key: " + key);
         }
     }
 
@@ -300,10 +437,30 @@ ServerManagerConfig ServerManager::parse_config(const std::string& config_conten
 
 ServerManager::ServerManager(const std::string& config_file) : ServerManager(load_config_from_file(config_file)) {}
 
-ServerManager::ServerManager(ServerManagerConfig config) : endpoints(std::move(config.endpoints)) {
-    log_ = create_logger("ServerManager");
+ServerManager::ServerManager(ServerManagerConfig config
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+                             ,
+                             IPC&& ipc
+#endif
+                             )
+    : endpoints(std::move(config.endpoints))
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+      ,
+      parent_ipc_(std::move(ipc))
+#endif
+{
+    log_ = create_logger(
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+        this->parent_ipc_.is_open() ? std::format("Subprocess {} ServerManager", this->parent_ipc_.get_fd()) :
+#endif
+                                    "ServerManager");
 #ifndef NDEBUG
     log_->set_level(log_level::trace);
+#endif
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    if (ipc.is_open())
+        is_subprocess_ = true;
 #endif
 
     configs_ = std::move(config.servers);
@@ -329,18 +486,34 @@ ServerManager::ServerManager(ServerManagerConfig config) : endpoints(std::move(c
     setup();
 }
 
-const std::string& ServerManager::get_endpoint_of(ServerType server_type, ServerProtocol server_proto) {
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+ServerManager::ServerManager(IPC&& ipc) : ServerManager(receive_config_from_ipc(ipc), std::move(ipc)) {}
+#endif
+
+std::string_view ServerManager::get_static_endpoint_address_str(std::string_view address) {
+    for (auto& endpoint : endpoints)
+        if (endpoint.address == address)
+            return endpoint.address;
+
+    log_->error("Failed to resolve endpoint address into static string: {}", address);
+    return {};
+}
+
+const ServerEndpoint& ServerManager::get_endpoint_of(ServerType server_type, ServerProtocol server_proto) {
     ZoneScoped;
-    std::vector<const std::string *> candidates;
+    std::vector<const ServerEndpoint *> candidates;
     candidates.reserve(endpoints.size());
-    // Collect all valid addresses for the requested type
+
+    // Collect all valid endpoints for requested type
     for (const auto& endpoint : endpoints)
         if (endpoint.type == server_type && endpoint.protocol == server_proto)
-            candidates.push_back(&endpoint.address);
+            candidates.push_back(&endpoint);
+
     // Handle cases where no config exists
     if (candidates.empty())
         throw std::runtime_error(std::format("No endpoint configuration found for {}", ServerTypeToString(server_type)));
-    // Return a random address from the candidates
+
+    // Return random endpoint from candidates
     static std::mt19937 generator{1234};
     std::uniform_int_distribution<size_t> distribution(0, candidates.size() - 1);
     return *candidates[distribution(generator)];
@@ -348,9 +521,10 @@ const std::string& ServerManager::get_endpoint_of(ServerType server_type, Server
 
 void ServerManager::run_scheduled_tasks() {
     ZoneScoped;
-    // Check if queue is empty first to avoid segfaults on top()
+
     if (scheduled_tasks_.empty())
         return;
+
     const auto& task = scheduled_tasks_.top();
     if (task.execution_time < startup_time_.get()) {
         auto callback = task.cb;
@@ -475,6 +649,24 @@ bool ServerManager::run_once() {
         if (http_server_)
             http_server_->service_now();
 
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+        // Receive and process an IPC message per child and parent
+        for (auto& [port, ipc] : subprocesses_)
+            if (ipc.is_open())
+                if (const auto ipc_msg = ipc.receive_message())
+                    process_child_ipc_message(ipc, *ipc_msg);
+        if (parent_ipc_.is_open())
+            if (const auto ipc_msg = parent_ipc_.receive_message())
+                process_parent_ipc_message(parent_ipc_, *ipc_msg);
+        ipc_broadcast_skip_ = nullptr;
+
+        // Stop if parent has died
+        if (is_subprocess_ && !parent_ipc_.is_open()) {
+            stop();
+            log_->info("Parent has closed the IPC connection. Stopping...");
+        }
+#endif
+
         // End busy performance timer
         const auto end_time = std::chrono::steady_clock::now();
         const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
@@ -487,6 +679,29 @@ bool ServerManager::run_once() {
     FrameMark;
     return running_;
 }
+
+std::shared_ptr<App> ServerManager::get_app(const AppInfo& info) { return App::get(*this, std::string(info.app_id), std::string(info.app_version)); }
+std::shared_ptr<Lobby> ServerManager::get_lobby(App& app, const LobbyInfo& info) { return app.get_lobby(info); }
+std::expected<std::shared_ptr<Game>, std::string> ServerManager::get_game(Lobby& lobby, const GameInfo& info) {
+    auto game = lobby.create_game(std::string(info.game_id), info.server_address, true);
+    if (!game)
+        return std::unexpected(game.error().debug_message.value_or("Unknown error"));
+    return *game;
+}
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+void ServerManager::ipc_broadcast(const ser::Message& message, bool parent, bool children) {
+    if (parent)
+        if (&parent_ipc_ != ipc_broadcast_skip_)
+            if (parent_ipc_.is_open())
+                parent_ipc_.send_message(message);
+    if (children)
+        for (auto& [port, ipc] : subprocesses_)
+            if (&ipc != ipc_broadcast_skip_)
+                if (ipc.is_open())
+                    ipc.send_message(message);
+}
+#endif
 
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
 void ServerManager::setup_http_server() {
@@ -502,7 +717,170 @@ void ServerManager::setup_http_server() {
         std::bind(&SockSelector::add_read_fd, &sock_selector_, std::placeholders::_1, [this](int fd) { http_server_->service_later(fd); });
     http_server_->on_delete_fd = std::bind(&SockSelector::remove_read_fd, &sock_selector_, std::placeholders::_1);
 #endif
-    http_server_->bind(http_config_->address, http_config_->port);
+    if (!http_server_->bind(http_config_->address, http_config_->port))
+        log_->error("Failed to bind HTTP server to port {}! Is the port already in use?", http_config_->port);
+}
+#endif
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+void ServerManager::process_child_ipc_message(IPC& sender, const ser::Message& msg) {
+    ipc_broadcast_skip_ = &sender;
+
+    // Only accept event messages
+    auto *event_msg = std::get_if<ser::EventMessage>(&msg);
+    if (!event_msg)
+        return;
+
+    return process_ipc_event(*event_msg);
+}
+
+void ServerManager::process_parent_ipc_message(IPC& sender, const ser::Message& msg) {
+    ipc_broadcast_skip_ = &sender;
+
+    // Only accept event messages
+    auto *event_msg = std::get_if<ser::EventMessage>(&msg);
+    if (!event_msg)
+        return;
+
+    return process_ipc_event(*event_msg);
+}
+
+void ServerManager::process_ipc_event(const ser::EventMessage& event_msg) {
+    const auto& params = event_msg.parameters;
+
+    // Handle lobby/game updates
+    if (event_msg.event_code == IPCEventCodes::GameUpdate || event_msg.event_code == IPCEventCodes::GameDelete) {
+        // Find tracked external game
+        const auto game_info = Game::decode_game_info(params);
+        auto it = std::find_if(external_games_.begin(), external_games_.end(), [&](const std::shared_ptr<Game>& g) { return g->matches_game_info(game_info); });
+
+        if (event_msg.event_code == IPCEventCodes::GameDelete) {
+            // Handle game deletion
+            if (it != external_games_.end()) {
+                auto game = *it;
+
+                log_->info("Received game deletion event via IPC for {}", game->id);
+
+                // Make sure game expires immediately
+                (*it)->empty_game_ttl = 0;
+
+                // Remove from external games tracking
+                external_games_.erase(it);
+            }
+
+            return;
+        } else if (event_msg.event_code == IPCEventCodes::GameUpdate) {
+            // Handle game update
+            std::shared_ptr<Game> game;
+            bool is_new = false;
+
+            // If known, reuse it. Otherwise, create new external game
+            if (it != external_games_.end()) {
+                game = *it;
+            } else {
+                auto app = App::get(*this, std::string(game_info.app_id), std::string(game_info.app_version));
+                if (!app) {
+                    log_->error("Failed to synchronize game via IPC: Unable to get matching application");
+                    return;
+                }
+
+                auto lobby = app->get_lobby({game_info.lobby_name, game_info.lobby_type});
+                if (!lobby) {
+                    log_->error("Failed to synchronize game via IPC: Unable to get matching lobby");
+                    return;
+                }
+
+                std::string_view address;
+                if (auto *address_ptr = params[DictKeyCodes::LoadBalancing::Address].get_ptr<std::string>())
+                    address = *address_ptr;
+                if (address.empty()) {
+                    log_->error("Failed to synchronize game via IPC: Unable to get matching address");
+                    return;
+                }
+
+                auto expected_game = lobby->create_game(std::string(game_info.game_id), address, true);
+                if (expected_game) {
+                    game = std::move(expected_game.value());
+                    if (game) {
+                        // Persist locally
+                        external_games_.push_back(game);
+                        is_new = true;
+                    } else {
+                        log_->error("Failed to synchronize game via IPC: Unable to create matching game");
+                        return;
+                    }
+                }
+            }
+
+            log_->info("Received game update event via IPC for {}", game->id);
+
+            // Apply updated properties
+            auto props_ptr = params[DictKeyCodes::Properties::GameProperties].get_or<ser::HashtablePtr>(nullptr);
+            if (props_ptr) {
+                // Handle PlayerCount separately
+                if (auto it = props_ptr->find(GameProps::PlayerCount); it != props_ptr->end())
+                    it->second.store_if<uint8_t>(game->dummy_peer_count);
+                if (game->dummy_peer_count > 0)
+                    game->is_created = true;
+
+                // Apply all other properties
+                game->insert_game_props(*props_ptr);
+            }
+
+            return;
+        }
+    }
+
+    // Handle persistent peer stores/loads
+    if (event_msg.event_code == IPCEventCodes::PersistentPeerLoad || event_msg.event_code == IPCEventCodes::PersistentPeerStore) {
+        // Get token
+        std::string_view token;
+        if (const auto& token_param = params[DictKeyCodes::LoadBalancing::Token]; token_param.is<std::string>()) {
+            token = token_param.get<std::string>();
+        } else {
+            log_->error("Failed to decode persistent peer received via IPC: Could not get token string");
+            return;
+        }
+
+        if (event_msg.event_code == IPCEventCodes::PersistentPeerStore) {
+            // Get user id
+            std::string_view user_id;
+            if (const auto& user_id_param = params[DictKeyCodes::LoadBalancing::UserId]; user_id_param.is<std::string>()) {
+                user_id = user_id_param.get<std::string>();
+            } else {
+                log_->error("Failed to decode persistent peer received via IPC: Could not get user id string");
+                return;
+            }
+
+            log_->info("Received persistent peer store event via IPC for {}", user_id);
+
+            auto pp = create_persistent_peer();
+            pp->token = token;
+            pp->user_id = user_id;
+
+            const auto game_info = Game::decode_game_info(params);
+            pp->app = get_app(game_info);
+            if (!pp->app) {
+                log_->error("Failed to store persistent peer received via IPC: Could not get associated app");
+                return;
+            }
+
+            if (auto lobby = get_lobby(*pp->app, game_info))
+                pp->current_game = get_game(*lobby, game_info).value_or(nullptr);
+
+            store_persistent_peer(*this, std::move(pp));
+
+            return;
+        } else if (event_msg.event_code == IPCEventCodes::PersistentPeerLoad) {
+            auto pp = load_persistent_peer(*this, token, false);
+            if (pp)
+                log_->info("Received persistent peer load event via IPC for {}", pp->user_id);
+            else
+                log_->warn("Received persistent peer load event via IPC for unknown user");
+
+            return;
+        }
+    }
 }
 #endif
 
@@ -520,6 +898,15 @@ void ServerManager::setup() {
 
     // Create servers
     for (const auto& config : configs_) {
+        if (config.subprocess) {
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+            setup_subprocess(config);
+            continue; // Skip the native bind routine in the parent for this iteration
+#else
+            log_->warn("Subprocess enabled in config, but not enabled at compile time");
+#endif
+        }
+
         // Create enet server and configure it
         log_->info("Setting up {} on port {}", ServerTypeToString(config.type), config.port);
 
@@ -580,6 +967,9 @@ void ServerManager::setup() {
                     peer.log->warn("Uncaught exception in ENet connect state change handler: {}", e.what());
                 }
 
+                if (state == luxon::enet::EnetConnectionState::Connected)
+                    handler->HandleConnect();
+
                 if (state == enet::EnetConnectionState::Disconnected) {
                     handler->HandleDisconnect();
                     // Self-destruct handler, this will invalidate the pointer
@@ -612,15 +1002,15 @@ void ServerManager::setup() {
                     peer.disconnect();
                 }
 #ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
-                mark_command_committed();
+                if (active_command_restarter_allowed_) {
+                    peer.log->warn("Command did not commit!");
+                    mark_command_committed();
+                }
 #endif
             };
 
             // Add to connection list
-            auto& handlerPtr = connections_.emplace_back(std::move(handler));
-
-            // Tell handler that we're connected
-            handlerPtr->HandleConnect();
+            auto& handlerPtr = connections_.emplace_back(std::move(handler));           
         };
 
         server.on_stun_bind = [this, &config](enet::EnetEndpoint&& ep) {
@@ -657,4 +1047,61 @@ void ServerManager::setup() {
 
     next_server_it_ = servers_.end();
 }
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+void ServerManager::setup_subprocess(const ServerConfig& config) {
+    log_->info("Setting up {} on port {} as a subprocess", ServerTypeToString(config.type), config.port);
+
+    if (!handle_start_subprocess) {
+        log_->error("handle_start_subprocess is not configured! Cannot start subprocess for port {}", config.port);
+        return;
+    }
+
+    auto ipc_opt = IPC::create();
+    if (!ipc_opt) {
+        log_->error("Failed to create IPC socket pair for port {}", config.port);
+        return;
+    }
+
+    // Emplace IPC into manager's tracked subprocesses
+    IPC& ipc = subprocesses_.try_emplace(config.port, std::move(*ipc_opt)).first->second;
+
+    // Trigger external subprocess logic using new child socket
+    handle_start_subprocess(ipc.get_child_fd());
+    ipc.close_child_fd();
+
+    // Synthesize child's configuration state
+    ServerManagerConfig child_config;
+    child_config.enable_ipv6 = enable_ipv6_;
+    child_config.max_connections = max_connections_;
+    child_config.max_game_peers = max_game_peers_;
+    child_config.tick_time_budget = tick_time_budget_;
+#ifdef LUXON_SERVER_ENABLE_SETTINGS_DATABASE
+    if (!settings_database_path.empty())
+        child_config.settings_database_path = settings_database_path + ":ro";
+#endif
+
+    // Make sure child actually binds server and doesn't endlessly fork
+    ServerConfig specific_config = config;
+    specific_config.subprocess = false;
+    specific_config.allow_unsolicited = true;
+    child_config.servers.emplace_back(std::move(specific_config));
+    child_config.endpoints = endpoints;
+
+#ifdef LUXON_SERVER_ENABLE_WEBSERVER
+    // Set up embedded HTTP server on child
+    if (http_config_) {
+        child_config.http = http_config_;
+        child_config.http->port += ipc.get_fd(); // Use a different port
+    }
+#endif
+
+    // Encode the configuration object
+    auto val_res = pfr_codec::to_value(child_config);
+    if (val_res)
+        ipc.send_message(luxon::ser::GenericValueMessage{std::move(*val_res)});
+    else
+        log_->error("Failed to serialize config for subprocess on port {}: {}", config.port, val_res.error().message);
+}
+#endif
 } // namespace server

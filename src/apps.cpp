@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <utility>
 #include <tracy/Tracy.hpp>
+#include <luxon/common_codes.hpp>
 
 namespace server {
 size_t LobbyIdHash::operator()(const LobbyId& k) const noexcept {
@@ -73,6 +74,11 @@ size_t App::get_peer_count() const {
     return fres;
 }
 
+void App::add_app_info(ser::ParameterList& params) {
+    params[DictKeyCodes::LoadBalancing::ApplicationId] = std::string(id);
+    params[DictKeyCodes::LoadBalancing::AppVersion] = std::string(version);
+}
+
 std::shared_ptr<Lobby> App::get_lobby(LobbyId id) {
     ZoneScoped;
 
@@ -125,6 +131,17 @@ std::vector<std::shared_ptr<App>> App::get_all(ServerManager& server_manager) {
     for (auto& [_, weak_app] : server_manager.apps)
         if (auto app = weak_app.lock())
             fres.emplace_back(std::move(app));
+    return fres;
+}
+
+AppInfo App::decode_app_info(const ser::ParameterList& params) {
+    AppInfo fres;
+    for (const auto& [key, val] : params) {
+        if (key == DictKeyCodes::LoadBalancing::ApplicationId)
+            fres.app_id = val.get<std::string>();
+        if (key == DictKeyCodes::LoadBalancing::AppVersion)
+            fres.app_version = val.get<std::string>();
+    }
     return fres;
 }
 } // namespace server

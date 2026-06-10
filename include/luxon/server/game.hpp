@@ -44,6 +44,11 @@ class App;
 struct Lobby;
 struct Peer;
 
+struct GameInfo : public LobbyInfo {
+    std::string_view game_id;
+    std::string_view server_address;
+};
+
 struct GamePeer {
     std::weak_ptr<Peer> peer;
     int32_t actor_id{};
@@ -79,6 +84,7 @@ struct Event {
 struct Game : std::enable_shared_from_this<Game> {
     const std::shared_ptr<Lobby> lobby;
     const std::string id;
+    const std::string_view server_address;
 
     ~Game();
 
@@ -100,15 +106,29 @@ struct Game : std::enable_shared_from_this<Game> {
     std::vector<std::string> lobby_props;
     std::list<Event> event_cache;
 
-    Game(std::shared_ptr<Lobby> lobby, std::string id) : lobby(std::move(lobby)), id(std::move(id)) {}
+    Game(std::shared_ptr<Lobby> lobby, std::string id, std::string_view server_address);
 
     std::list<GamePeer> peers;
+    uint8_t dummy_peer_count = 0;
 
     ///
     /// \brief Returns the server manager that is managing this game
     /// \return Reference to server manager
     ///
     ServerManager& get_server_manager() const { return lobby->app->server_manager; }
+
+    ///
+    /// \brief Adds appid, appver, lobbyid, lobbytype, gameid to parameter list
+    /// \param Parameter list to add info to
+    ///
+    void add_game_info(ser::ParameterList& params);
+
+    ///
+    /// \brief Checks if game info matches this game
+    /// \param Info to check against
+    /// \return True if info is for this game
+    ///
+    bool matches_game_info(const GameInfo& info) const;
 
     ///
     /// \brief Creates a GamePeer that can later be added to the game
@@ -242,5 +262,8 @@ struct Game : std::enable_shared_from_this<Game> {
 
     // Helper to check if event data matches a filter hashtable
     static bool matches_filter(const ser::Value& event_data, const ser::Hashtable& filter);
+
+    // Helper to decode game info
+    static GameInfo decode_game_info(const ser::ParameterList& params);
 };
 } // namespace server

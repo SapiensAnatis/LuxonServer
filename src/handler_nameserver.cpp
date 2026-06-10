@@ -30,7 +30,8 @@ void NameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             // Add details if authentication was successful
             if (resp.return_code == ErrorCodes::Core::Ok) {
                 resp.parameters[DictKeyCodes::LoadBalancing::UserId] = peer_->persistent->user_id;
-                resp.parameters[DictKeyCodes::LoadBalancing::Address] = server_manager_.get_endpoint_of(ServerType::MasterServer, peer_->transport_protocol);
+                resp.parameters[DictKeyCodes::LoadBalancing::Address] =
+                    server_manager_.get_endpoint_of(ServerType::MasterServer, peer_->transport_protocol).address;
             }
 
             // Send payload
@@ -50,7 +51,7 @@ void NameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             ser::OperationResponseMessage resp{.operation_code = OpCodes::RpcAndMisc::GetRegions, .return_code = 0};
             resp.parameters[DictKeyCodes::AuthAndLobby::Region] = std::vector<std::string>{"eu"};
             resp.parameters[DictKeyCodes::LoadBalancing::Address] =
-                std::vector<std::string>{server_manager_.get_endpoint_of(ServerType::MasterServer, peer_->transport_protocol)};
+                std::vector<std::string>{server_manager_.get_endpoint_of(ServerType::MasterServer, peer_->transport_protocol).address};
             send(proto_->Serialize(resp));
             return;
         }

@@ -388,4 +388,3 @@ FFI_FUNCTION(bool, registerAuthPlugin, (unsigned type), type)
 /** @brief Registers the internal hookpoint routing for a server instance */
 FFI_FUNCTION(void, registerHookpoints, (ServerManagerHandle manager), manager)
 #endif
-}

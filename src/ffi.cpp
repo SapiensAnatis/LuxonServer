@@ -1584,7 +1584,7 @@ bool serverManagerGetEndpointOf(ServerManagerHandle manager, LuxonServerType ser
         if (!m)
             return false;
 
-        const auto& ep = m->get_endpoint_of(static_cast<server::ServerType>(server_type), static_cast<server::ServerProtocol>(server_proto));
+        const auto& ep = m->get_endpoint_of(static_cast<server::ServerType>(server_type), static_cast<server::ServerProtocol>(server_proto)).address;
         if (ep.size() >= max_len)
             return false;
 

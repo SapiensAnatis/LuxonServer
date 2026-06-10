@@ -46,12 +46,16 @@ struct Lobby : std::enable_shared_from_this<Lobby> {
 
     sqlite3 *sql{};
 
-    std::expected<std::shared_ptr<Game>, ser::OperationResponseMessage> create_game(std::string id, bool or_get = false);
+    std::expected<std::shared_ptr<Game>, ser::OperationResponseMessage> create_game(std::string id, std::string_view address, bool or_get = false);
 
     size_t get_peer_count() const;
     size_t get_master_peer_count() const;
 
+    void add_lobby_info(ser::ParameterList& params);
+
     // Returns exceptions with user error strings!
     std::vector<std::string> query_lobbies(const std::string& sql_queries);
+
+    static struct LobbyInfo decode_lobby_info(const ser::ParameterList& params);
 };
 } // namespace server

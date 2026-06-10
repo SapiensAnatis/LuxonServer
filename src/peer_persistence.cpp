@@ -4,10 +4,14 @@
 #include "peer_persistence.hpp"
 #include "server_manager.hpp"
 #include "string_hash.hpp"
+#include "ipc_codes.hpp"
+#include "apps.hpp"
+#include "game.hpp"
 
 #include <vector>
 #include <random>
 #include <algorithm>
+#include <luxon/common_codes.hpp>
 #include <tracy/Tracy.hpp>
 
 namespace server {
@@ -26,6 +30,21 @@ std::string create_token(size_t length = 32) {
 void store_persistent_peer(ServerManager& server_manager, std::unique_ptr<PeerPersistent>&& pp) {
     ZoneScoped;
 
+    if (!pp->app)
+        return;
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    luxon::ser::EventMessage msg;
+    msg.event_code = IPCEventCodes::PersistentPeerStore;
+    msg.parameters[DictKeyCodes::LoadBalancing::Token] = pp->token;
+    msg.parameters[DictKeyCodes::LoadBalancing::UserId] = pp->user_id;
+    if (pp->current_game)
+        pp->current_game->add_game_info(msg.parameters);
+    else
+        pp->app->add_app_info(msg.parameters);
+    server_manager.ipc_broadcast(msg);
+#endif
+
     server_manager.add_scheduled_task(30000, [&server_manager, token = string_hash(pp->token)]() {
         // If persistent peer has not been loaded back within 30 seconds, get rid of it
         std::erase_if(server_manager.peer_persistent_data, [token](const auto& v) { return string_hash(v->token) == token; });
@@ -35,6 +54,13 @@ void store_persistent_peer(ServerManager& server_manager, std::unique_ptr<PeerPe
 
 std::unique_ptr<PeerPersistent> load_persistent_peer(ServerManager& server_manager, std::string_view token, bool refresh_token) {
     ZoneScoped;
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    luxon::ser::EventMessage msg;
+    msg.event_code = IPCEventCodes::PersistentPeerLoad;
+    msg.parameters[DictKeyCodes::LoadBalancing::Token] = std::string(token);
+    server_manager.ipc_broadcast(msg);
+#endif
 
     for (auto it = server_manager.peer_persistent_data.begin(); it != server_manager.peer_persistent_data.end(); ++it) {
         if (it->get()->token != token)

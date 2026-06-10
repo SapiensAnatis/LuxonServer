@@ -1,58 +1,62 @@
-# Internal servers
+# Internal listening servers
 
-NameServer:
-  - port: 5058
-  - address: 127.0.0.1:5058
+Servers:
+  NameServer:
+    - port: 5058
+      external_address: 127.0.0.1:5058
 
-MasterServer:
-  - port: 5055
-  - address: 127.0.0.1:5055
+    - port: 27000
+      external_address: 127.0.0.1:27000
 
-GameServer:
-  - port: 5056
-  - address: 127.0.0.1:5056
+  MasterServer:
+    - port: 5055
+      external_address: 127.0.0.1:5055
 
+    - port: 27001
+      external_address: 127.0.0.1:27001
 
-NameServer:
-  - port: 27000
-  - address: 127.0.0.1:27000
+  GameServer:
+    - port: 5056
+      external_address: 127.0.0.1:5056
 
-MasterServer:
-  - port: 27001
-  - address: 127.0.0.1:27001
-
-GameServer:
-  - port: 27002
-  - address: 127.0.0.1:27002
+    - port: 27002
+      external_address: 127.0.0.1:27002
 
 
-# External servers (transport protocol proxies)
+# Additional externally reachable endpoints
+# Useful for TCP/WebSocket proxies etc.
 
 External:
   - type: NameServer
+    protocol: TCP
     address: 127.0.0.1:4533
-    protocol: TCP
+
   - type: MasterServer
+    protocol: TCP
     address: 127.0.0.1:4530
-    protocol: TCP
+
   - type: GameServer
-    address: 127.0.0.1:4531
     protocol: TCP
+    address: 127.0.0.1:4531
 
 
 # Misc settings
 
 EnableIPv6: true
 MaxConnections: 20
-MaxGamePeers: 0 # No explicit limit
-TickTimeBudget: 2000 # In microseconds, 0 to disable, more clients -> lower value; higher value -> lower latency
+MaxGamePeers: 0
+TickTimeBudget: 2000
+
 
 # Settings database
-# Requires to LUXON_SERVER_ENABLE_SETTINGS_DATABASE to be enabled at build time
+# Requires LUXON_SERVER_ENABLE_SETTINGS_DATABASE
 #SettingsDatabase: settings.sqlite3
 
 
 # Web interface and API
+# Requires LUXON_SERVER_ENABLE_WEBSERVER
 
 HTTP:
-  - active: true
+  enabled: true
+  address: 0.0.0.0
+  port: 5088

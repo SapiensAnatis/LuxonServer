@@ -4,6 +4,7 @@
 #include "game.hpp"
 #include "global.hpp"
 #include "server_manager.hpp"
+#include "ipc_codes.hpp"
 
 #include <luxon/ser_interface.hpp>
 #include <luxon/common_codes.hpp>
@@ -55,11 +56,47 @@ std::expected<ser::ByteArray, ser::Error> Event::get_cached_data(ser::IProtocol&
     return *expected_payload;
 }
 
-Game::~Game(){// Call into plugins
+Game::~Game() {
+    // Call into plugins
     GAME_PLUGINS_INVOKE({
         OnCloseGameCallInfo info{.failed_on_create = last_actor_id == 0};
         execute_plugin_chain(&PluginBase::OnCloseGame, info);
     });
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    ser::EventMessage ipc_event;
+    ipc_event.event_code = IPCEventCodes::GameDelete;
+    add_game_info(ipc_event.parameters);
+    get_server_manager().ipc_broadcast(ipc_event);
+#endif
+}
+
+Game::Game(std::shared_ptr<Lobby> lobby, std::string id, std::string_view server_address)
+    : lobby(std::move(lobby)), id(std::move(id)), server_address(get_server_manager().get_static_endpoint_address_str(server_address)) {}
+
+void Game::add_game_info(ser::ParameterList& params) {
+    params[DictKeyCodes::GameAndActor::GameId] = id;
+    params[DictKeyCodes::LoadBalancing::Address] = std::string(server_address);
+    lobby->add_lobby_info(params);
+}
+
+bool Game::matches_game_info(const GameInfo& info) const {
+    if (info.game_id != id)
+        return false;
+
+    if (info.lobby_name != lobby->name)
+        return false;
+
+    if (info.lobby_type != lobby->type)
+        return false;
+
+    if (info.app_id != lobby->app->id)
+        return false;
+
+    if (info.app_version != lobby->app->version)
+        return false;
+
+    return true;
 }
 
 GamePeer Game::create_peer(std::shared_ptr<Peer> peer) {
@@ -288,7 +325,7 @@ std::pair<int16_t, std::string_view> Game::validate_join(const std::string& user
 
     // Check capacity (peers + expected users)
     if (max_peers > 0) {
-        const size_t current_count = peers.size();
+        const size_t current_count = peers.size() + dummy_peer_count;
         const size_t reserved_count = expected_users.size();
 
         // Expected users don't consume at slot
@@ -310,7 +347,7 @@ std::pair<int16_t, std::string_view> Game::validate_join(const std::string& user
                 return {ErrorCodes::Matchmaking::GameFull, "Game is full"};
 
         // Return error if actor list is full
-        if (peers.size() + needed_slots > 0xfe)
+        if (current_count + needed_slots > 0xfe)
             return {ErrorCodes::Matchmaking::ActorListFull, "Game is full"};
     }
 
@@ -327,9 +364,21 @@ std::pair<int16_t, std::string_view> Game::validate_join(const std::string& user
 void Game::trigger_lobby_update() {
     ZoneScoped;
 
+    // Call handlers
     auto shared_this = shared_from_this();
     for (auto& handler : lobby->game_list_update_handlers)
         handler.game_change(shared_this);
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    // Send IPC event
+    ser::EventMessage ipc_event;
+    ipc_event.event_code = IPCEventCodes::GameUpdate;
+    add_game_info(ipc_event.parameters);
+    ipc_event.parameters[DictKeyCodes::Properties::GameProperties] = std::make_shared<ser::Hashtable>(get_lobby_game_props());
+    if (!server_address.empty())
+        ipc_event.parameters[DictKeyCodes::LoadBalancing::Address] = std::string(server_address);
+    get_server_manager().ipc_broadcast(ipc_event);
+#endif
 }
 
 #define PROP_MAP                                                                                                                                               \
@@ -355,7 +404,7 @@ ser::Value Game::get_game_prop(const ser::Value& key) {
             PROP_MAP
 #undef PROP_MAP_ENTRY
         case GameProps::PlayerCount:
-            return static_cast<uint8_t>(peers.size());
+            return static_cast<uint8_t>(peers.size() + dummy_peer_count);
         }
     }
 
@@ -371,7 +420,7 @@ ser::Hashtable Game::get_lobby_game_props() const {
     ZoneScoped;
 
     ser::Hashtable fres;
-    fres[GameProps::PlayerCount] = static_cast<uint8_t>(peers.size());
+    fres[GameProps::PlayerCount] = static_cast<uint8_t>(peers.size() + dummy_peer_count);
     fres[GameProps::IsOpen] = is_open;
     fres[GameProps::MaxPlayers] = max_peers;
 
@@ -389,7 +438,7 @@ ser::Hashtable Game::get_game_props(bool no_custom) {
 #define PROP_MAP_ENTRY(game_param, type, var, updates_lobby) fres[GameProps::game_param] = static_cast<type>(var);
     PROP_MAP
 #undef PROP_MAP_ENTRY
-    fres[GameProps::PlayerCount] = static_cast<uint8_t>(peers.size());
+    fres[GameProps::PlayerCount] = static_cast<uint8_t>(peers.size() + dummy_peer_count);
 
     return fres;
 }
@@ -517,5 +566,16 @@ bool Game::matches_filter(const ser::Value& event_data, const ser::Hashtable& fi
     }
 
     return true;
+}
+
+GameInfo Game::decode_game_info(const ser::ParameterList& params) {
+    GameInfo fres(Lobby::decode_lobby_info(params));
+    for (const auto& [key, val] : params) {
+        if (key == DictKeyCodes::GameAndActor::GameId)
+            fres.game_id = val.get<std::string>();
+        if (key == DictKeyCodes::LoadBalancing::Address)
+            fres.server_address = val.get<std::string>();
+    }
+    return fres;
 }
 } // namespace server

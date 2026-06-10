@@ -22,6 +22,17 @@ struct LobbyIdHash {
     size_t operator()(const LobbyId& k) const noexcept;
 };
 
+struct AppInfo {
+    std::string_view app_id, app_version;
+};
+
+struct LobbyInfo : public AppInfo {
+    std::string_view lobby_name;
+    uint8_t lobby_type{};
+
+    operator LobbyId() const { return {lobby_name, lobby_type}; }
+};
+
 struct AppSettings {
     // Defaults are most relaxed for maximum compatibility
 
@@ -54,6 +65,8 @@ public:
     size_t get_game_count() const;
     size_t get_peer_count() const;
 
+    void add_app_info(ser::ParameterList& params);
+
     const AppSettings& get_settings() const { return settings_; }
     std::shared_ptr<Lobby> get_lobby(LobbyId id = {});
     const std::unordered_map<LobbyId, std::weak_ptr<Lobby>, LobbyIdHash>& get_lobbies() const { return lobbies_; }
@@ -62,5 +75,6 @@ public:
 
     static std::shared_ptr<App> get(ServerManager& server_manager, const std::string& id, const std::string& version);
     static std::vector<std::shared_ptr<App>> get_all(ServerManager& server_manager);
+    static AppInfo decode_app_info(const ser::ParameterList& params);
 };
 } // namespace server

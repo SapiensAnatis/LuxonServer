@@ -9,6 +9,9 @@
 #include "string_hash.hpp"
 #include "logger.hpp"
 #include "hookpoints.hpp"
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+#include "ipc.hpp"
+#endif
 #ifdef LUXON_SERVER_ENABLE_SETTINGS_DATABASE
 #include "settings_manager.hpp"
 #endif
@@ -62,7 +65,7 @@ struct ServerConfig {
     ServerType type = ServerType::None;
     uint16_t port = 0;
 
-    bool allow_unsolicited = false;
+    bool allow_unsolicited = false, subprocess = false;
 
     std::string stun_server_host;
     uint16_t stun_server_port = 19302;
@@ -71,7 +74,8 @@ struct ServerConfig {
 struct ServerEndpoint {
     ServerType type = ServerType::None;
     ServerProtocol protocol{};
-    std::string address;};
+    std::string address;
+};
 
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
 struct HttpServerConfig {
@@ -172,6 +176,7 @@ public:
     std::vector<ServerEndpoint> endpoints;
 #ifdef LUXON_SERVER_ENABLE_SETTINGS_DATABASE
     std::optional<SettingsManager> settings_manager;
+    std::string settings_database_path;
 #endif
 
 #ifdef LUXON_SERVER_ENABLE_HOOKPOINTS
@@ -188,8 +193,15 @@ private:
     std::unordered_map<uint16_t, enet::EnetServer> servers_;
     decltype(servers_)::iterator next_server_it_;
     std::list<HandlerPtr<HandlerBase>> connections_;
+    std::vector<std::shared_ptr<Game>> external_games_;
     std::priority_queue<ScheduledTask, std::vector<ScheduledTask>, std::greater<ScheduledTask>> scheduled_tasks_;
     std::queue<std::move_only_function<void()>> main_loop_calls_;
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    IPC parent_ipc_;
+    IPC *ipc_broadcast_skip_{};
+    bool is_subprocess_{};
+    std::unordered_map<uint16_t, IPC> subprocesses_;
+#endif
 #ifdef LUXON_SERVER_MULTITHREADED
     std::mutex main_loop_calls_mutex_;
 #endif
@@ -220,8 +232,17 @@ private:
     uint32_t tick_time_budget_ = 2000;
 
     void setup();
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    void setup_subprocess(const ServerConfig& config);
+#endif
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
     void setup_http_server();
+#endif
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    void process_child_ipc_message(IPC& sender, const luxon::ser::Message& msg);
+    void process_parent_ipc_message(IPC& sender, const luxon::ser::Message& msg);
+    void process_ipc_event(const ser::EventMessage& event_msg);
 #endif
 
     void run_scheduled_tasks();
@@ -240,7 +261,25 @@ public:
     ///
     /// \brief Construct manager directly from C++ configuration
     ///
-    explicit ServerManager(ServerManagerConfig config);
+    explicit ServerManager(ServerManagerConfig config
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+                           ,
+                           IPC&& ipc = {}
+#endif
+    );
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    ///
+    /// \brief Construct manager from IPC child fd
+    /// \note Configuration will be received from parent via IPC
+    ///
+    explicit ServerManager(IPC&& ipc);
+
+    ///
+    /// \brief Receive ServerManagerConfig from parent
+    ///
+    static ServerManagerConfig receive_config_from_ipc(IPC& ipc);
+#endif
 
     ///
     /// \brief Load ServerManagerConfig from YAML file
@@ -279,12 +318,55 @@ public:
     }
 
     ///
+    /// \brief Retrieves an application instance based on the provided info
+    /// \param info Identifying information for the target application
+    /// \return Shared pointer to the application
+    ///
+    std::shared_ptr<App> get_app(const AppInfo& info);
+
+    ///
+    /// \brief Retrieves a lobby instance within a specific application
+    /// \param app Parent application hosting the lobby
+    /// \param info Identifying information for the target lobby
+    /// \return Shared pointer to the lobby
+    ///
+    std::shared_ptr<Lobby> get_lobby(App& app, const LobbyInfo& info);
+
+    ///
+    /// \brief Retrieves a game instance within a specific lobby
+    /// \param lobby Parent lobby hosting the game
+    /// \param info Identifying information for the target game
+    /// \return Expected containing a shared pointer to the game on success, or an error message string on failure
+    ///
+    std::expected<std::shared_ptr<Game>, std::string> get_game(Lobby& lobby, const GameInfo& info);
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    ///
+    /// \brief Broadcasts a serialized message via IPC to parent and/or child processes
+    /// \param message The serialized message payload to send
+    /// \param parent True to transmit the message to the parent process
+    /// \param children True to transmit the message to all child subprocesses
+    /// \param skip Optional IPC connection pointer to exclude from the broadcast (e.g., the original sender)
+    ///
+    void ipc_broadcast(const ser::Message& message, bool parent, bool children);
+
+    ///
+    /// \brief Broadcasts a serialized message via IPC to all connected processes (parent and children)
+    /// \param message The serialized message payload to send
+    /// \param skip Optional IPC connection pointer to exclude from the broadcast (e.g., the original sender)
+    ///
+    void ipc_broadcast(const ser::Message& message) { return ipc_broadcast(message, true, true); }
+#endif
+
+    std::string_view get_static_endpoint_address_str(std::string_view address);
+
+    ///
     /// \brief Gets the external address of a random server of given type
     /// \param server_type Type of server to get
     /// \param server_proto Protocol of server to get
     /// \return Externally reachable address of server, e.g. "104.18.26.120:5058"
     ///
-    const std::string& get_endpoint_of(ServerType server_type, ServerProtocol server_proto);
+    const ServerEndpoint& get_endpoint_of(ServerType server_type, ServerProtocol server_proto);
 
     ///
     /// \brief Gets a list of active connections to this instance
@@ -365,5 +447,7 @@ public:
         return false;
 #endif
     }
+
+    static std::function<void(int fd)> handle_start_subprocess;
 };
 } // namespace server

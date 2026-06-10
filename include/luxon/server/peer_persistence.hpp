@@ -14,6 +14,7 @@ namespace server {
 class ServerManager;
 struct App;
 struct Game;
+class IPC;
 
 struct PeerPersistent {
     std::shared_ptr<App> app;

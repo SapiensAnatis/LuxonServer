@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <system_error>
+#include <luxon/flat_map.hpp>
 
 namespace server {
 namespace {
@@ -44,12 +45,78 @@ const std::vector<Migration> MIGRATIONS = {{1,
 } // anonymous namespace
 
 SettingsManager::SettingsManager(const std::filesystem::path& db_path) {
-    is_read_only_ = !check_is_writable(db_path);
+    std::string path_str = db_path.string();
 
+    // Set initial state
+    is_read_only_ = !check_is_writable(db_path);
     int flags = is_read_only_ ? SQLITE_OPEN_READONLY : (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
 
-    // Initialize wrapper with determined flags
-    db_ = std::make_unique<sqlite3pp::database>(db_path.string().c_str(), flags);
+    // Define suffix handlers
+    const flat_map<std::string, std::function<void()>> suffix_handlers = {{"ro",
+                                                                           [&]() {
+                                                                               flags &= ~(SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
+                                                                               flags |= SQLITE_OPEN_READONLY;
+                                                                               is_read_only_ = true;
+                                                                           }},
+                                                                          {"rw",
+                                                                           [&]() {
+                                                                               flags &= ~SQLITE_OPEN_READONLY;
+                                                                               flags |= (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
+                                                                               is_read_only_ = false;
+                                                                           }},
+                                                                          {"nocreate", [&]() { flags &= ~SQLITE_OPEN_CREATE; }},
+                                                                          {"nomutex",
+                                                                           [&]() {
+                                                                               flags &= ~SQLITE_OPEN_FULLMUTEX;
+                                                                               flags |= SQLITE_OPEN_NOMUTEX;
+                                                                           }},
+                                                                          {"fullmutex",
+                                                                           [&]() {
+                                                                               flags &= ~SQLITE_OPEN_NOMUTEX;
+                                                                               flags |= SQLITE_OPEN_FULLMUTEX;
+                                                                           }},
+                                                                          {"sharedcache",
+                                                                           [&]() {
+                                                                               flags &= ~SQLITE_OPEN_PRIVATECACHE;
+                                                                               flags |= SQLITE_OPEN_SHAREDCACHE;
+                                                                           }},
+                                                                          {"privatecache",
+                                                                           [&]() {
+                                                                               flags &= ~SQLITE_OPEN_SHAREDCACHE;
+                                                                               flags |= SQLITE_OPEN_PRIVATECACHE;
+                                                                           }},
+                                                                          {"memory", [&]() { flags |= SQLITE_OPEN_MEMORY; }}};
+
+    // Parse and strip suffixes
+    std::vector<std::function<void()>> actions_to_apply;
+
+    while (true) {
+        size_t last_colon = path_str.find_last_of(':');
+        if (last_colon == std::string::npos)
+            break;
+
+        std::string suffix = path_str.substr(last_colon + 1);
+        auto it = suffix_handlers.find(suffix);
+
+        if (it != suffix_handlers.end()) {
+            // Store lambda to apply later
+            actions_to_apply.push_back(it->second);
+            // Strip recognized suffix from path string
+            path_str.erase(last_colon);
+        } else {
+            break;
+        }
+    }
+
+    // Apply suffixes from left to right
+    for (auto it = actions_to_apply.rbegin(); it != actions_to_apply.rend(); ++it)
+        (*it)();
+
+    // Create cleaned path
+    std::filesystem::path clean_db_path(path_str);
+
+    // Initialize wrapper
+    db_ = std::make_unique<sqlite3pp::database>(clean_db_path.string().c_str(), flags);
 
     if (!is_read_only_) {
         // Enforce foreign key constraints

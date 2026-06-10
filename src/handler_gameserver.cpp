@@ -48,11 +48,11 @@ void GameServerHandler::HandleDisconnect() {
     ZoneScoped;
 
     if (auto& game = get_game()) {
-        // Cleanup cache if enabled
-        if (game->flags & DictKeyCodes::RoutingAndEvents::CleanupCacheOnLeave)
-            game->event_cache.remove_if([&](const Event& cached_event) { return cached_event.sender_actor_id == game_peer_->actor_id; });
-
         if (game_peer_) {
+            // Cleanup cache if enabled
+            if (game->flags & DictKeyCodes::RoutingAndEvents::CleanupCacheOnLeave)
+                game->event_cache.remove_if([&](const Event& cached_event) { return cached_event.sender_actor_id == game_peer_->actor_id; });
+
             if (!has_left) {
                 // Call into plugins
                 GAME_PLUGINS_INVOKE({

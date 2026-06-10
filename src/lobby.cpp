@@ -3,6 +3,7 @@
 
 #include "lobby.hpp"
 #include "lobby_vt.hpp"
+#include "server_manager.hpp"
 #include "apps.hpp"
 #include "game.hpp"
 #include "sqlite3.h"
@@ -57,8 +58,13 @@ Lobby::Lobby(std::shared_ptr<App> app, std::string name, uint8_t type) : app(std
 
 Lobby::~Lobby() noexcept { sqlite3_close_v2(sql); }
 
-std::expected<std::shared_ptr<Game>, ser::OperationResponseMessage> Lobby::create_game(std::string id, bool or_get) {
+std::expected<std::shared_ptr<Game>, ser::OperationResponseMessage> Lobby::create_game(std::string id, std::string_view address, bool or_get) {
     ZoneScoped;
+
+    if (id.empty())
+        return std::unexpected(ser::OperationResponseMessage{.operation_code = OpCodes::Matchmaking::CreateGame,
+                                                             .return_code = ErrorCodes::Matchmaking::GameIdNotExists,
+                                                             .debug_message = "Game id can't be empty"});
 
     if (auto res = games.find(id); res != games.end())
         return or_get ? res->second.lock() : nullptr;
@@ -69,7 +75,7 @@ std::expected<std::shared_ptr<Game>, ser::OperationResponseMessage> Lobby::creat
             .operation_code = OpCodes::Matchmaking::CreateGame, .return_code = ErrorCodes::Server::ServerFull, .debug_message = "Game count limit reached!"});
     }
 
-    std::shared_ptr<Game> fres(new Game(shared_from_this(), std::move(id)), [](Game *ptr) {
+    std::shared_ptr<Game> fres(new Game(shared_from_this(), std::move(id), address), [](Game *ptr) {
         auto& lobby = ptr->lobby;
 
         for (auto& handler : lobby->game_list_update_handlers)
@@ -107,6 +113,12 @@ size_t Lobby::get_master_peer_count() const {
         if (auto game = weak_game.lock())
             fres += !!game->find_peer(game->master_actor);
     return fres;
+}
+
+void Lobby::add_lobby_info(ser::ParameterList& params) {
+    params[DictKeyCodes::AuthAndLobby::LobbyName] = name;
+    params[DictKeyCodes::AuthAndLobby::LobbyType] = type;
+    app->add_app_info(params);
 }
 
 std::vector<std::string> Lobby::query_lobbies(const std::string& sql_queries) {
@@ -165,5 +177,16 @@ std::vector<std::string> Lobby::query_lobbies(const std::string& sql_queries) {
     }
 
     return results;
+}
+
+LobbyInfo Lobby::decode_lobby_info(const ser::ParameterList& params) {
+    LobbyInfo fres(App::decode_app_info(params));
+    for (const auto& [key, val] : params) {
+        if (key == DictKeyCodes::AuthAndLobby::LobbyName)
+            fres.lobby_name = val.get<std::string>();
+        if (key == DictKeyCodes::AuthAndLobby::LobbyType)
+            fres.lobby_type = val.get<uint8_t>();
+    }
+    return fres;
 }
 } // namespace server
