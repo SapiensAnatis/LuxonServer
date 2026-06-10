@@ -366,7 +366,7 @@ public:
     /// \param server_proto Protocol of server to get
     /// \return Externally reachable address of server, e.g. "104.18.26.120:5058"
     ///
-    const ServerEndpoint& get_endpoint_of(ServerType server_type, ServerProtocol server_proto);
+    const ServerEndpoint& get_endpoint_of(ServerType server_type, ServerProtocol server_proto = ServerProtocol::UDP);
 
     ///
     /// \brief Gets a list of active connections to this instance

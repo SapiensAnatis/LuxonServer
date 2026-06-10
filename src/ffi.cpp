@@ -1361,7 +1361,7 @@ GameHandle lobbyCreateGame(LobbyHandle lobby, const char *id, bool or_get, SerMe
         if (!l)
             return wrap<GameHandle>(nullptr);
 
-        auto res = l->create_game(id, or_get);
+        auto res = l->create_game(id, l->app->server_manager.get_endpoint_of(server::ServerType::GameServer).address, or_get);
         if (res.has_value()) {
             return wrap<GameHandle>(res->get());
         } else {
