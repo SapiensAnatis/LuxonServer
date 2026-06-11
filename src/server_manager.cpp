@@ -598,6 +598,23 @@ bool ServerManager::run_once() {
         const auto start_time = std::chrono::steady_clock::now();
 #endif
 
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+        // Receive and process IPC messages from parent
+        if (parent_ipc_.is_open())
+            while (const auto ipc_msg = parent_ipc_.receive_message())
+                process_parent_ipc_message(parent_ipc_, *ipc_msg);
+
+#ifdef LUXON_SERVER_POLL
+        // Receive and process an IPC message from children
+        for (auto& [port, ipc] : subprocesses_)
+            if (ipc.is_open())
+                if (const auto ipc_msg = ipc.receive_message())
+                    process_child_ipc_message(ipc, *ipc_msg);
+#endif
+
+        ipc_broadcast_skip_ = nullptr;
+#endif
+
         // Check if slow update should be done
         const bool slow_update = last_slow_update_.get() > 250;
         if (slow_update)
@@ -666,18 +683,9 @@ bool ServerManager::run_once() {
         // Update HTTP server
         if (http_server_)
             http_server_->service_now();
+#endif
 
 #ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
-        // Receive and process an IPC message per child and parent
-        for (auto& [port, ipc] : subprocesses_)
-            if (ipc.is_open())
-                if (const auto ipc_msg = ipc.receive_message())
-                    process_child_ipc_message(ipc, *ipc_msg);
-        if (parent_ipc_.is_open())
-            if (const auto ipc_msg = parent_ipc_.receive_message())
-                process_parent_ipc_message(parent_ipc_, *ipc_msg);
-        ipc_broadcast_skip_ = nullptr;
-
         // Stop if parent has died
         if (is_subprocess_ && !parent_ipc_.is_open()) {
             stop();
@@ -685,6 +693,7 @@ bool ServerManager::run_once() {
         }
 #endif
 
+#ifdef LUXON_SERVER_ENABLE_WEBSERVER
         // End busy performance timer
         const auto end_time = std::chrono::steady_clock::now();
         const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
@@ -777,8 +786,6 @@ void ServerManager::process_ipc_event(const ser::EventMessage& event_msg) {
             if (it != external_games_.end()) {
                 auto game = *it;
 
-                log_->info("Received game deletion event via IPC for {}", game->id);
-
                 // Make sure game expires immediately
                 (*it)->empty_game_ttl = 0;
 
@@ -830,8 +837,6 @@ void ServerManager::process_ipc_event(const ser::EventMessage& event_msg) {
                 }
             }
 
-            log_->info("Received game update event via IPC for {}", game->id);
-
             // Apply updated properties
             auto props_ptr = params[DictKeyCodes::Properties::GameProperties].get_or<ser::HashtablePtr>(nullptr);
             if (props_ptr) {
@@ -870,8 +875,6 @@ void ServerManager::process_ipc_event(const ser::EventMessage& event_msg) {
                 return;
             }
 
-            log_->info("Received persistent peer store event via IPC for {}", user_id);
-
             auto pp = create_persistent_peer();
             pp->token = token;
             pp->user_id = user_id;
@@ -891,9 +894,7 @@ void ServerManager::process_ipc_event(const ser::EventMessage& event_msg) {
             return;
         } else if (event_msg.event_code == IPCEventCodes::PersistentPeerLoad) {
             auto pp = load_persistent_peer(*this, token, false);
-            if (pp)
-                log_->info("Received persistent peer load event via IPC for {}", pp->user_id);
-            else
+            if (!pp)
                 log_->warn("Received persistent peer load event via IPC for unknown user");
 
             return;
@@ -1085,6 +1086,15 @@ void ServerManager::setup_subprocess(const ServerConfig& config) {
 
     // Emplace IPC into manager's tracked subprocesses
     IPC& ipc = subprocesses_.try_emplace(config.port, std::move(*ipc_opt)).first->second;
+
+#ifndef LUXON_SERVER_POLL
+    // Set sock selector handler
+    sock_selector_.add_read_fd(ipc.get_fd(), [this, &ipc](SockSelector::socket_t) {
+        while (const auto ipc_msg = ipc.receive_message())
+            process_child_ipc_message(ipc, *ipc_msg);
+        ipc_broadcast_skip_ = nullptr;
+    });
+#endif
 
     // Trigger external subprocess logic using new child socket
     handle_start_subprocess(ipc.get_child_fd());
