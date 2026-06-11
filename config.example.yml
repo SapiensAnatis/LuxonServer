@@ -1,9 +1,12 @@
-# Internal listening servers
+# Servers
 
 Servers:
   NameServer:
     - port: 5058
       external_address: 127.0.0.1:5058
+      proxies:
+        - protocol: TCP
+          address: 127.0.0.1:4533
 
     - port: 27000
       external_address: 127.0.0.1:27000
@@ -11,6 +14,9 @@ Servers:
   MasterServer:
     - port: 5055
       external_address: 127.0.0.1:5055
+      proxies:
+        - protocol: TCP
+          address: 127.0.0.1:4530
 
     - port: 27001
       external_address: 127.0.0.1:27001
@@ -18,26 +24,12 @@ Servers:
   GameServer:
     - port: 5056
       external_address: 127.0.0.1:5056
+      proxies:
+        - protocol: TCP
+          address: 127.0.0.1:4531
 
     - port: 27002
       external_address: 127.0.0.1:27002
-
-
-# Additional externally reachable endpoints
-# Useful for TCP/WebSocket proxies etc.
-
-External:
-  - type: NameServer
-    protocol: TCP
-    address: 127.0.0.1:4533
-
-  - type: MasterServer
-    protocol: TCP
-    address: 127.0.0.1:4530
-
-  - type: GameServer
-    protocol: TCP
-    address: 127.0.0.1:4531
 
 
 # Misc settings

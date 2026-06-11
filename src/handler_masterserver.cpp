@@ -125,8 +125,8 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
         }
         }
     } else {
-        const auto get_random_gameserver_addr = [this] -> std::string_view {
-            return server_manager_.get_endpoint_of(ServerType::GameServer, peer_->transport_protocol).address;
+        const auto get_random_gameserver_base_addr = [this] -> std::string_view {
+            return server_manager_.get_random_server_base_address(ServerType::GameServer);
         };
 
         switch (req.operation_code) {
@@ -302,7 +302,7 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
 
             // Create new game with given ID
             peer_->log->info("Creating game: {}", game_id);
-            auto game_expected = lobby.value()->create_game(std::move(game_id), get_random_gameserver_addr());
+            auto game_expected = lobby.value()->create_game(std::move(game_id), get_random_gameserver_base_addr());
             if (!game_expected) {
                 send(proto_->Serialize(game_expected.error()));
                 return;
@@ -311,7 +311,8 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
 
             // Build response
             ser::OperationResponseMessage resp{.operation_code = OpCodes::Matchmaking::CreateGame, .return_code = ErrorCodes::Core::Ok};
-            resp.parameters[DictKeyCodes::LoadBalancing::Address] = std::string(game->server_address);
+            resp.parameters[DictKeyCodes::LoadBalancing::Address] =
+                std::string(server_manager_.resolve_server_address(ServerType::GameServer, peer_->transport_protocol, game->server_address));
             resp.parameters[DictKeyCodes::LoadBalancing::Token] = peer_->persistent->token;
             resp.parameters[DictKeyCodes::GameAndActor::GameId] = game->id;
 
@@ -370,7 +371,7 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                 else
                     new_game_id = game_id;
 
-                auto game_expected = lobby.value()->create_game(std::move(new_game_id), get_random_gameserver_addr());
+                auto game_expected = lobby.value()->create_game(std::move(new_game_id), get_random_gameserver_base_addr());
                 if (!game_expected) {
                     send(proto_->Serialize(game_expected.error()));
                     return;
@@ -412,16 +413,14 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
 
             // Build and send response
             ser::OperationResponseMessage resp{.operation_code = OpCodes::Matchmaking::JoinGame, .return_code = ErrorCodes::Core::Ok};
-            resp.parameters[DictKeyCodes::LoadBalancing::Address] = std::string(game->server_address);
+            resp.parameters[DictKeyCodes::LoadBalancing::Address] =
+                std::string(server_manager_.resolve_server_address(ServerType::GameServer, peer_->transport_protocol, game->server_address));
             resp.parameters[DictKeyCodes::LoadBalancing::Token] = peer_->persistent->token;
             if (game->id != game_id)
                 resp.parameters[DictKeyCodes::GameAndActor::GameId] = game->id;
 
             send(proto_->Serialize(resp));
             peer_->log->info("Joining {} game: {}", is_new ? "newly created" : "existing", game->id);
-
-            // Make token valid for this game
-            peer_->persistent->current_game = std::move(game);
 
             return;
         }
@@ -534,7 +533,7 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                     game_id = generate_game_id(peer_->persistent->user_id);
 
                 // Create new game
-                auto game_expected = lobby.value()->create_game(std::move(game_id), get_random_gameserver_addr());
+                auto game_expected = lobby.value()->create_game(std::move(game_id), get_random_gameserver_base_addr());
                 if (!game_expected) {
                     send(proto_->Serialize(game_expected.error()));
                     return;
@@ -558,7 +557,8 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             resp.return_code = ErrorCodes::Core::Ok;
 
             // Payload similar to Create/Join Game
-            resp.parameters[DictKeyCodes::LoadBalancing::Address] = std::string(selected_game->server_address);
+            resp.parameters[DictKeyCodes::LoadBalancing::Address] =
+                std::string(server_manager_.resolve_server_address(ServerType::GameServer, peer_->transport_protocol, selected_game->server_address));
             resp.parameters[DictKeyCodes::LoadBalancing::Token] = peer_->persistent->token;
             resp.parameters[DictKeyCodes::GameAndActor::GameId] = selected_game->id;
 

@@ -61,6 +61,11 @@ template <typename T> using HandlerPtr = std::unique_ptr<T>;
 
 enum class ServerType { None, NameServer, MasterServer, GameServer };
 
+struct ProxyConfig {
+    ServerProtocol protocol;
+    std::string address;
+};
+
 struct ServerConfig {
     ServerType type = ServerType::None;
     uint16_t port = 0;
@@ -69,12 +74,9 @@ struct ServerConfig {
 
     std::string stun_server_host;
     uint16_t stun_server_port = 19302;
-};
 
-struct ServerEndpoint {
-    ServerType type = ServerType::None;
-    ServerProtocol protocol{};
-    std::string address;
+    std::string external_address;
+    std::vector<ProxyConfig> proxies;
 };
 
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
@@ -91,7 +93,6 @@ struct HttpServerConfig {
 ///
 struct ServerManagerConfig {
     std::vector<ServerConfig> servers;
-    std::vector<ServerEndpoint> endpoints;
     bool enable_ipv6 = true;
     unsigned max_connections = 0;
     ///
@@ -123,7 +124,10 @@ struct ServerManagerConfig {
     /// \brief Add a listening server
     ///
     ServerManagerConfig& add_server(ServerType type, uint16_t port) {
-        servers.push_back({type, port});
+        ServerConfig server;
+        server.type = type;
+        server.port = port;
+        servers.push_back(std::move(server));
         return *this;
     }
 
@@ -131,16 +135,11 @@ struct ServerManagerConfig {
     /// \brief Add a listening server and a matching external UDP endpoint
     ///
     ServerManagerConfig& add_server(ServerType type, uint16_t port, std::string external_udp_address) {
-        servers.push_back({type, port});
-        endpoints.push_back({type, ServerProtocol::UDP, std::move(external_udp_address)});
-        return *this;
-    }
-
-    ///
-    /// \brief Add an externally reachable endpoint
-    ///
-    ServerManagerConfig& add_endpoint(ServerType type, ServerProtocol protocol, std::string address) {
-        endpoints.push_back({type, protocol, std::move(address)});
+        ServerConfig server;
+        server.type = type;
+        server.port = port;
+        server.external_address = std::move(external_udp_address);
+        servers.push_back(std::move(server));
         return *this;
     }
 
@@ -173,7 +172,6 @@ class ServerManager {
 public:
     std::unordered_map<std::pair<std::string, std::string>, std::weak_ptr<App>, StringPairHasher> apps;
     std::vector<std::unique_ptr<PeerPersistent>> peer_persistent_data;
-    std::vector<ServerEndpoint> endpoints;
 #ifdef LUXON_SERVER_ENABLE_SETTINGS_DATABASE
     std::optional<SettingsManager> settings_manager;
     std::string settings_database_path;
@@ -361,12 +359,28 @@ public:
     std::string_view get_static_endpoint_address_str(std::string_view address);
 
     ///
-    /// \brief Gets the external address of a random server of given type
+    /// \brief Gets the base external address of a random server of given type
     /// \param server_type Type of server to get
-    /// \param server_proto Protocol of server to get
-    /// \return Externally reachable address of server, e.g. "104.18.26.120:5058"
+    /// \return Base externally reachable address of server, e.g. "104.18.26.120:5058"
     ///
-    const ServerEndpoint& get_endpoint_of(ServerType server_type, ServerProtocol server_proto = ServerProtocol::UDP);
+    std::string_view get_random_server_base_address(ServerType server_type);
+
+    ///
+    /// \brief Resolves a specific proxy address for a base server address based on requested protocol
+    /// \param type Type of server to get
+    /// \param proto Protocol of server to get
+    /// \param base_address The base UDP external address to resolve a proxy for
+    /// \return Proxy address if found, otherwise returns base_address
+    ///
+    std::string_view resolve_server_address(ServerType type, ServerProtocol proto, std::string_view base_address);
+
+    ///
+    /// \brief Gets the resolved external address (or proxy) of a random server of given type
+    /// \param server_type Type of server to get
+    /// \param proto Protocol of server to get
+    /// \return Resolved address
+    ///
+    std::string_view get_random_server_address(ServerType server_type, ServerProtocol proto = ServerProtocol::UDP);
 
     ///
     /// \brief Gets a list of active connections to this instance

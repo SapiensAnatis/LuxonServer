@@ -1361,7 +1361,7 @@ GameHandle lobbyCreateGame(LobbyHandle lobby, const char *id, bool or_get, SerMe
         if (!l)
             return wrap<GameHandle>(nullptr);
 
-        auto res = l->create_game(id, l->app->server_manager.get_endpoint_of(server::ServerType::GameServer).address, or_get);
+        auto res = l->create_game(id, l->app->server_manager.get_random_server_base_address(server::ServerType::GameServer), or_get);
         if (res.has_value()) {
             return wrap<GameHandle>(res->get());
         } else {
@@ -1460,16 +1460,6 @@ void serverManagerConfigAddServerAndEndpoint(ServerManagerConfigHandle config, L
     ffi_safe_exec([=] {
         if (auto *c = unwrap<server::ServerManagerConfig>(config)) {
             c->add_server(static_cast<server::ServerType>(type), port, external_udp_address);
-        }
-    });
-}
-
-void serverManagerConfigAddEndpoint(ServerManagerConfigHandle config, LuxonServerType type, LuxonServerProtocol protocol, const char *address) {
-    if (!address)
-        return;
-    ffi_safe_exec([=] {
-        if (auto *c = unwrap<server::ServerManagerConfig>(config)) {
-            c->add_endpoint(static_cast<server::ServerType>(type), static_cast<server::ServerProtocol>(protocol), address);
         }
     });
 }
@@ -1584,7 +1574,7 @@ bool serverManagerGetEndpointOf(ServerManagerHandle manager, LuxonServerType ser
         if (!m)
             return false;
 
-        const auto& ep = m->get_endpoint_of(static_cast<server::ServerType>(server_type), static_cast<server::ServerProtocol>(server_proto)).address;
+        std::string_view ep = m->get_random_server_address(static_cast<server::ServerType>(server_type), static_cast<server::ServerProtocol>(server_proto));
         if (ep.size() >= max_len)
             return false;
 

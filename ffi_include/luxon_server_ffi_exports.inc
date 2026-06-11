@@ -314,9 +314,6 @@ FFI_FUNCTION(void, serverManagerConfigAddServer, (ServerManagerConfigHandle conf
 FFI_FUNCTION(void, serverManagerConfigAddServerAndEndpoint,
              (ServerManagerConfigHandle config, LuxonServerType type, uint16_t port, const char *external_udp_address), config, type, port,
              external_udp_address)
-/** @brief Adds endpoints to direct clients to */
-FFI_FUNCTION(void, serverManagerConfigAddEndpoint, (ServerManagerConfigHandle config, LuxonServerType type, LuxonServerProtocol protocol, const char *address),
-             config, type, protocol, address)
 /** @brief Tunes low-level networking parameters (IPv6, Connections, Ticks) */
 FFI_FUNCTION(void, serverManagerConfigSetLimits,
              (ServerManagerConfigHandle config, bool enable_ipv6, unsigned max_connections, unsigned max_game_peers, uint32_t tick_time_budget), config,

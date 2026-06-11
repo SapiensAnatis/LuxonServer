@@ -233,8 +233,10 @@ std::optional<std::string> ReadOptionalExternalAddress(Yaml::Node& map, std::str
 
     if (external_address)
         return std::move(*external_address);
-    if (legacy_address)
+    if (legacy_address) {
+        create_logger("ConfigParser")->warn("The 'address' key at {} is deprecated. Please migrate to using 'external_address'.", path);
         return std::move(*legacy_address);
+    }
     return std::nullopt;
 }
 
@@ -277,7 +279,7 @@ void ParseServersSection(ServerManagerConfig& config, Yaml::Node& section) {
             Yaml::Node& item = (*itemIt).second;
             const std::string item_path = std::format("{}[{}]", type_path, index);
 
-            ValidateAllowedKeys(item, item_path, {"port", "external_address", "address", "allow_unsolicited", "subprocess", "stun_server"});
+            ValidateAllowedKeys(item, item_path, {"port", "external_address", "address", "allow_unsolicited", "subprocess", "stun_server", "proxies"});
 
             ServerConfig server;
             server.type = type;
@@ -293,37 +295,27 @@ void ParseServersSection(ServerManagerConfig& config, Yaml::Node& section) {
                 ParseStunServer(server, stun_node, item_path + ".stun_server");
 
             auto external_address = ReadOptionalExternalAddress(item, item_path);
+            if (external_address)
+                server.external_address = std::move(*external_address);
 
-            if (external_address) {
-                ServerEndpoint endpoint;
-                endpoint.type = type;
-                endpoint.protocol = ServerProtocol::UDP;
-                endpoint.address = std::move(*external_address);
+            if (!item["proxies"].IsNone()) {
+                ExpectSequence(item["proxies"], item_path + ".proxies");
+                size_t p_index = 0;
+                for (auto pIt = item["proxies"].Begin(); pIt != item["proxies"].End(); pIt++, ++p_index) {
+                    Yaml::Node& pNode = (*pIt).second;
+                    std::string p_path = std::format("{}.proxies[{}]", item_path, p_index);
 
-                config.endpoints.push_back(std::move(endpoint));
+                    ValidateAllowedKeys(pNode, p_path, {"protocol", "address"});
+
+                    ProxyConfig proxy;
+                    proxy.protocol = ReadOptionalProtocol(pNode, "protocol", p_path, ServerProtocol::TCP);
+                    proxy.address = ReadRequiredScalar<std::string>(pNode, "address", p_path);
+                    server.proxies.push_back(std::move(proxy));
+                }
             }
 
             config.servers.emplace_back(std::move(server));
         }
-    }
-}
-
-void ParseExternalSection(ServerManagerConfig& config, Yaml::Node& section) {
-    ExpectSequence(section, "External");
-
-    size_t index = 0;
-    for (auto it = section.Begin(); it != section.End(); it++, ++index) {
-        Yaml::Node& item = (*it).second;
-        const std::string item_path = std::format("External[{}]", index);
-
-        ValidateAllowedKeys(item, item_path, {"type", "protocol", "address"});
-
-        ServerEndpoint endpoint;
-        endpoint.type = ReadRequiredServerType(item, "type", item_path);
-        endpoint.protocol = ReadOptionalProtocol(item, "protocol", item_path, ServerProtocol::UDP);
-        endpoint.address = ReadRequiredScalar<std::string>(item, "address", item_path);
-
-        config.endpoints.push_back(std::move(endpoint));
     }
 }
 
@@ -404,7 +396,8 @@ ServerManagerConfig ServerManager::parse_config(const std::string& config_conten
         if (key == "Servers") {
             ParseServersSection(config, section);
         } else if (key == "External") {
-            ParseExternalSection(config, section);
+            create_logger("ConfigParser")
+                ->warn("The 'External' configuration block is deprecated and will be ignored. Please migrate to using 'proxies' within the 'Servers' block.");
         } else if (key == "EnableIPv6") {
             config.enable_ipv6 = ReadNodeScalar<bool>(section, "EnableIPv6");
         } else if (key == "MaxConnections" || key == "CCU") {
@@ -443,10 +436,8 @@ ServerManager::ServerManager(ServerManagerConfig config
                              IPC&& ipc
 #endif
                              )
-    : endpoints(std::move(config.endpoints))
 #ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
-      ,
-      parent_ipc_(std::move(ipc))
+    : parent_ipc_(std::move(ipc))
 #endif
 {
     log_ = create_logger(
@@ -491,32 +482,59 @@ ServerManager::ServerManager(IPC&& ipc) : ServerManager(receive_config_from_ipc(
 #endif
 
 std::string_view ServerManager::get_static_endpoint_address_str(std::string_view address) {
-    for (auto& endpoint : endpoints)
-        if (endpoint.address == address)
-            return endpoint.address;
+    for (auto& cfg : configs_) {
+        if (cfg.external_address == address)
+            return cfg.external_address;
+        for (auto& proxy : cfg.proxies) {
+            if (proxy.address == address)
+                return proxy.address;
+        }
+    }
 
     log_->error("Failed to resolve endpoint address into static string: {}", address);
     return {};
 }
 
-const ServerEndpoint& ServerManager::get_endpoint_of(ServerType server_type, ServerProtocol server_proto) {
+std::string_view ServerManager::get_random_server_base_address(ServerType server_type) {
     ZoneScoped;
-    std::vector<const ServerEndpoint *> candidates;
-    candidates.reserve(endpoints.size());
+    std::vector<const ServerConfig *> candidates;
+    candidates.reserve(configs_.size());
 
     // Collect all valid endpoints for requested type
-    for (const auto& endpoint : endpoints)
-        if (endpoint.type == server_type && endpoint.protocol == server_proto)
-            candidates.push_back(&endpoint);
+    for (const auto& cfg : configs_)
+        if (cfg.type == server_type && !cfg.external_address.empty())
+            candidates.push_back(&cfg);
 
     // Handle cases where no config exists
     if (candidates.empty())
-        throw std::runtime_error(std::format("No endpoint configuration found for {}", ServerTypeToString(server_type)));
+        throw std::runtime_error(std::format("No server configuration found for {}", ServerTypeToString(server_type)));
 
     // Return random endpoint from candidates
     static std::mt19937 generator{1234};
     std::uniform_int_distribution<size_t> distribution(0, candidates.size() - 1);
-    return *candidates[distribution(generator)];
+    return candidates[distribution(generator)]->external_address;
+}
+
+std::string_view ServerManager::resolve_server_address(ServerType type, ServerProtocol proto, std::string_view base_address) {
+    for (const auto& cfg : configs_) {
+        if (cfg.type == type && cfg.external_address == base_address) {
+            if (proto == ServerProtocol::UDP)
+                return cfg.external_address;
+
+            for (const auto& proxy : cfg.proxies)
+                if (proxy.protocol == proto)
+                    return proxy.address;
+
+            // Fallback
+            return cfg.external_address;
+        }
+    }
+    return base_address;
+}
+
+std::string_view ServerManager::get_random_server_address(ServerType server_type, ServerProtocol proto) {
+    std::string_view base = get_random_server_base_address(server_type);
+    return resolve_server_address(server_type, proto, base);
 }
 
 void ServerManager::run_scheduled_tasks() {
@@ -1085,7 +1103,6 @@ void ServerManager::setup_subprocess(const ServerConfig& config) {
     specific_config.subprocess = false;
     specific_config.allow_unsolicited = true;
     child_config.servers.emplace_back(std::move(specific_config));
-    child_config.endpoints = endpoints;
 
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
     // Set up embedded HTTP server on child

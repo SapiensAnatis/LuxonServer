@@ -31,7 +31,7 @@ void NameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             if (resp.return_code == ErrorCodes::Core::Ok) {
                 resp.parameters[DictKeyCodes::LoadBalancing::UserId] = peer_->persistent->user_id;
                 resp.parameters[DictKeyCodes::LoadBalancing::Address] =
-                    server_manager_.get_endpoint_of(ServerType::MasterServer, peer_->transport_protocol).address;
+                    std::string(server_manager_.get_random_server_address(ServerType::MasterServer, peer_->transport_protocol));
             }
 
             // Send payload
@@ -47,11 +47,11 @@ void NameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
         case OpCodes::RpcAndMisc::GetRegions: {
             ZoneScopedN("HandleOperationRequest_GetRegions");
 
-            // Give dummy response  TODO: Give real response
+            // Give dummy response
             ser::OperationResponseMessage resp{.operation_code = OpCodes::RpcAndMisc::GetRegions, .return_code = 0};
             resp.parameters[DictKeyCodes::AuthAndLobby::Region] = std::vector<std::string>{"eu"};
             resp.parameters[DictKeyCodes::LoadBalancing::Address] =
-                std::vector<std::string>{server_manager_.get_endpoint_of(ServerType::MasterServer, peer_->transport_protocol).address};
+                std::vector<std::string>{std::string(server_manager_.get_random_server_address(ServerType::MasterServer, peer_->transport_protocol))};
             send(proto_->Serialize(resp));
             return;
         }
