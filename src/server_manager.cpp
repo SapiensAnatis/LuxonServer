@@ -916,6 +916,9 @@ void ServerManager::setup() {
 
     // Create servers
     for (const auto& config : configs_) {
+        if (config.is_routing_only)
+            continue;
+
         if (config.subprocess) {
 #ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
             setup_subprocess(config);
@@ -1098,11 +1101,19 @@ void ServerManager::setup_subprocess(const ServerConfig& config) {
         child_config.settings_database_path = settings_database_path + ":ro";
 #endif
 
-    // Make sure child actually binds server and doesn't endlessly fork
-    ServerConfig specific_config = config;
-    specific_config.subprocess = false;
-    specific_config.allow_unsolicited = true;
-    child_config.servers.emplace_back(std::move(specific_config));
+    // Make sure child actually binds server, doesn't endlessly fork and knows about all other servers
+    for (const auto& cfg : configs_) {
+        ServerConfig child_cfg = cfg;
+        child_cfg.subprocess = false;
+
+        if (cfg.port == config.port && cfg.type == config.type) {
+            child_cfg.allow_unsolicited = true;
+            child_cfg.is_routing_only = false;
+        } else {
+            child_cfg.is_routing_only = true;
+        }
+        child_config.servers.emplace_back(std::move(child_cfg));
+    }
 
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
     // Set up embedded HTTP server on child

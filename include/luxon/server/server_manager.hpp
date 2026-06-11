@@ -70,7 +70,7 @@ struct ServerConfig {
     ServerType type = ServerType::None;
     uint16_t port = 0;
 
-    bool allow_unsolicited = false, subprocess = false;
+    bool allow_unsolicited = false, subprocess = false, is_routing_only = false;
 
     std::string stun_server_host;
     uint16_t stun_server_port = 19302;
