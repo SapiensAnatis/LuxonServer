@@ -172,7 +172,8 @@ For enabling it, see [Building](#building).
 **A:** Luxon Server is NOT supposed to be used as an alternative the the official Photon Server SDK. That means it doesn't have to handle loads big enough to saturate a single core even on very low-end systems. I have estimated the *New Nintendo 3DS* as a server to be able to handle at least 10, probably up to 30 concurrently active players! Plus, strict single-threading keeps the codebase simple.
 
 **Q:** Are there any plans on implementing *actual* load balancing (not just the protocol part of it) across multiple systems/processes?\
-**A:** I have looked into spawning more processes running GameServer instances, as an alternative to multi-threading. However, I am strictly against supporting load balancing across different systems. I do NOT want to agitate Exit Games by releasing a competitive product.
+**A:** I am strictly against supporting load balancing across different systems. I do NOT want to agitate Exit Games by releasing a competitive product.\
+HOWEVER, it *is* possible to run GameServers inside separate processes *on the same machine* by specifying `subprocess: true` in a GameServer type server configuration block. You can specify several GameServers on different ports in subprocesses this way and games will automatically be created on a randomly chosen GameServer.
 
 **Q:** Are you going to write bindings for writing plugins in C#, Python, Javascript, ...?\
 **A:** An FFI interface exists now, and I consider it to be quite stable. I might implement bare Python bindings in the future for reference. When writing your own bindings however, be sure to pin luxonserver to a specific commit or tag to avoid any breakages that may occur anyways. I can't guarantee full, complete FFI ABI stability yet.
