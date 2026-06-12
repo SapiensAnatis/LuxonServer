@@ -87,7 +87,7 @@
 #include <tracy/Tracy.hpp>
 
 namespace server {
-std::function<void(int)> ServerManager::handle_start_subprocess{};
+std::function<void(const std::string&)> ServerManager::handle_start_subprocess{};
 
 namespace {
 ServerType StringToServerType(const std::string& str) {
@@ -1096,8 +1096,8 @@ void ServerManager::setup_subprocess(const ServerConfig& config) {
     });
 #endif
 
-    // Trigger external subprocess logic using new child socket
-    handle_start_subprocess(ipc.get_child_fd());
+    // Trigger external subprocess handler using new child socket
+    handle_start_subprocess(IPC::socket_to_string(ipc.get_child_fd()));
     ipc.close_child_fd();
 
     // Synthesize child's configuration state

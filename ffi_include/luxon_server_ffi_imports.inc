@@ -252,3 +252,10 @@ FFI_IMPORT_PAD(hookpointMasterServerHandleOperationRequestCreateGame)
 FFI_IMPORT_PAD(hookpointHandlerBaseHandleENetCommandOnMessage)
 FFI_IMPORT_PAD(hookpointAppLoadAppSettings)
 #endif
+
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+/* --- MULTIPROCESSING IMPORTS --- */
+FFI_IMPORT(void, multiProcessingLaunchIPCChild, (const char *ipc_fd), ipc_fd)
+#else
+FFI_IMPORT_PAD(multiProcessingLaunchProcess)
+#endif

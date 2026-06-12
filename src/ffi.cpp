@@ -24,6 +24,9 @@
 #include "luxon/server/handler_masterserver.hpp"
 #include "luxon/server/apps.hpp"
 #endif
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+#include "luxon/server/ipc.hpp"
+#endif
 
 #include <algorithm>
 #include <string>
@@ -1537,6 +1540,17 @@ ServerManagerHandle createServerManagerFromContents(const char *yaml_config_cont
     });
 }
 
+ServerManagerHandle createServerManagerFromIPC(const char *ipc_fd) {
+    if (!ipc_fd || !*ipc_fd)
+        return wrap<ServerManagerHandle>(nullptr);
+    return ffi_safe_call<ServerManagerHandle>(wrap<ServerManagerHandle>(nullptr), [=] {
+        auto real_ipc_fd = server::IPC::socket_from_string(ipc_fd);
+        if (!real_ipc_fd || *real_ipc_fd == server::IPC::INVALID_OS_SOCKET)
+            return wrap<ServerManagerHandle>(nullptr);
+        return wrap<ServerManagerHandle>(new server::ServerManager((server::IPC(*real_ipc_fd))));
+    });
+}
+
 void destroyServerManager(ServerManagerHandle manager) {
     ffi_safe_exec([=] {
         if (manager)
@@ -1603,6 +1617,26 @@ uint8_t serverManagerGetMaxGamePeers(ServerManagerHandle manager) {
         auto *m = unwrap<server::ServerManager>(manager);
         return m ? m->get_max_game_peers() : 0;
     });
+}
+
+bool serverManagerEnableMultiprocessing(ServerManagerHandle manager) {
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+    return ffi_safe_call<uint8_t>(0, [=] {
+        auto *m = unwrap<server::ServerManager>(manager);
+        if (!m)
+            return false;
+#if defined(FFI_WASM) || defined(__wasm__)
+        m->handle_start_subprocess = [](const std::string& fd) { multiProcessingLaunchIPCChild(fd.c_str()); };
+#else
+        if (!g_imports.multiProcessingLaunchIPCChild)
+            return false;
+        m->handle_start_subprocess = [] (const std::string& fd) { g_imports.multiProcessingLaunchIPCChild(fd.c_str()); };
+#endif
+        return true;
+    });
+#else
+    return false;
+#endif
 }
 
 /* ============================================================================

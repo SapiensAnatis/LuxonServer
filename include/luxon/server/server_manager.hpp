@@ -462,6 +462,6 @@ public:
 #endif
     }
 
-    static std::function<void(int fd)> handle_start_subprocess;
+    static std::function<void(const std::string& fd)> handle_start_subprocess;
 };
 } // namespace server

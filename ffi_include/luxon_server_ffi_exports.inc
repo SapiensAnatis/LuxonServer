@@ -333,6 +333,8 @@ FFI_FUNCTION(ServerManagerHandle, createServerManagerFromConfig, (ServerManagerC
 FFI_FUNCTION(ServerManagerHandle, createServerManagerFromFile, (const char *config_file_path), config_file_path)
 /** @brief High level shortcut to instantiate directly from a YAML payload */
 FFI_FUNCTION(ServerManagerHandle, createServerManagerFromContents, (const char *yaml_config_contents), yaml_config_contents)
+/** @brief High level shortcut to instantiate directly from an IPC file descriptor */
+FFI_FUNCTION(ServerManagerHandle, createServerManagerFromIPC, (const char *ipc_fd), ipc_fd)
 /** @brief Destroys the main manager instance */
 FFI_FUNCTION(void, destroyServerManager, (ServerManagerHandle manager), manager)
 /** @brief Executes the server loop infinitely until stopped */
@@ -351,6 +353,8 @@ FFI_FUNCTION(ffi_size_t, serverManagerGetConnectionCount, (ServerManagerHandle m
 FFI_FUNCTION(unsigned, serverManagerGetMaxConnections, (ServerManagerHandle manager), manager)
 /** @brief Retrieves maximum peers per game */
 FFI_FUNCTION(uint8_t, serverManagerGetMaxGamePeers, (ServerManagerHandle manager), manager)
+/** @brief Enables multiprocessing via multiProcessingLaunchIPCChild import */
+FFI_FUNCTION(bool, serverManagerEnableMultiprocessing, (ServerManagerHandle manager), manager)
 
 /* --- HANDLER / GAME EXTENSIONS --- */
 

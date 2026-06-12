@@ -164,7 +164,7 @@ if (LUXON_SERVER_BUILD_FFI)
     else()
         add_executable(luxon_server_ffi)
     endif()
-    target_sources(luxon_server_ffi PRIVATE src/ffi.cpp)
+    target_sources(luxon_server_ffi PRIVATE src/ffi.cpp ffi_include/luxon_server_ffi.h)
     target_link_libraries(luxon_server_ffi luxon_server_lib)
     target_include_directories(luxon_server_ffi PUBLIC ffi_include)
     set_target_properties(luxon_server_ffi PROPERTIES

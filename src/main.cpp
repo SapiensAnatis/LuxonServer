@@ -36,13 +36,17 @@ int main(int argc, char *argv[]) {
         prctl(PR_SET_PDEATHSIG, SIGINT);
 
 #endif
-        int child_fd = std::stoi(argv[2]);
+        auto child_fd = server::IPC::socket_from_string(argv[2]);
+        if (!child_fd || *child_fd == server::IPC::INVALID_OS_SOCKET) {
+            std::cerr << "Invalid IPC descriptor! Dying..." << std::endl;
+            return EXIT_FAILURE;
+        }
         try {
-            server::ServerManager child_manager((server::IPC(child_fd)));
+            server::ServerManager child_manager((server::IPC(*child_fd)));
             child_manager.run();
         } catch (const std::exception& e) {
-            std::cout << "std::terminate about to be called in subprocess: " << e.what() << std::endl;
-            std::cout << "Child is about to die!" << std::endl;
+            std::cerr << "std::terminate about to be called in subprocess: " << e.what() << std::endl;
+            std::cerr << "Child is about to die!" << std::endl;
             throw;
         }
         return EXIT_SUCCESS;
@@ -52,10 +56,10 @@ int main(int argc, char *argv[]) {
     std::string exe_path = argv[0];
 
     // Set up the subprocess spawning mechanism before the manager is initialized
-    server::ServerManager::handle_start_subprocess = [exe_path](int fd) {
+    server::ServerManager::handle_start_subprocess = [exe_path](const std::string& fd) {
 #if defined(_WIN32)
         // Build command line
-        std::string cmd = exe_path + " --child-fd " + std::to_string(fd);
+        std::string cmd = exe_path + " --child-fd " + fd;
 
         STARTUPINFOA si;
         ZeroMemory(&si, sizeof(si));
@@ -93,10 +97,8 @@ int main(int argc, char *argv[]) {
         }
 
         if (pid == 0) {
-            std::string fd_str = std::to_string(fd);
-
             // Re-execute the binary. The open file descriptor will be natively inherited.
-            execl(exe_path.c_str(), exe_path.c_str(), "--child-fd", fd_str.c_str(), nullptr);
+            execl(exe_path.c_str(), exe_path.c_str(), "--child-fd", fd.c_str(), nullptr);
 
             // If execv returns, the replacement failed
             std::cerr << "Subprocess failed to execv! Errno: " << errno << std::endl;
@@ -110,7 +112,7 @@ int main(int argc, char *argv[]) {
     try {
         server::ServerManager("config.yml").run();
     } catch (const std::exception& e) {
-        std::cout << "std::terminate about to be called: " << e.what() << std::endl;
+        std::cerr << "std::terminate about to be called: " << e.what() << std::endl;
         throw;
     }
 
