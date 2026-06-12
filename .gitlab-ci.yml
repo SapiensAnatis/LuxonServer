@@ -144,8 +144,8 @@ build:openbsd:amd64:
   before_script:
     - apt-get update && apt-get install -y clang lld cmake ninja-build git wget tar
     - mkdir -p openbsd-sysroot
-    - wget https://cdn.openbsd.org/pub/OpenBSD/7.8/amd64/base78.tgz
-    - wget https://cdn.openbsd.org/pub/OpenBSD/7.8/amd64/comp78.tgz
+    - wget https://public.tuxifan.net/tuxifan/OpenBSD/7.8/amd64/base78.tgz
+    - wget https://public.tuxifan.net/tuxifan/OpenBSD/7.8/amd64/comp78.tgz
     - tar -xzf base78.tgz -C openbsd-sysroot
     - tar -xzf comp78.tgz -C openbsd-sysroot
   script:
