@@ -46,10 +46,16 @@ option(LUXON_SERVER_ENABLE_COMMAND_RESTARTER "Allow commands to be restarted lat
 
 if (LUXON_SERVER_EXPOSE_FULL_FFI)
     set(LUXON_SERVER_BUILD_FFI ON CACHE BOOL "Builds shared library with C FFI" FORCE)
-    set(LUXON_SERVER_ENABLE_MULTIPROCESSING ON CACHE BOOL "Enable IPC system and game server subprocesses" FORCE)
+    if (NOT WASI)
+        set(LUXON_SERVER_ENABLE_MULTIPROCESSING ON CACHE BOOL "Enable IPC system and game server subprocesses" FORCE)
+    endif()
     set(LUXON_SERVER_HOOKPOINTS ON CACHE BOOL "Allows library user or plugins to hook into specific parts of Luxon Server" FORCE)
     set(LUXON_SERVER_ENABLE_PLUGINS ON CACHE BOOL "Enable use of plugins" FORCE)
     set(LUXON_SERVER_ENABLE_COMMAND_RESTARTER ON CACHE BOOL "Allow commands to be restarted later for better async support" FORCE)
+endif()
+
+if (WASI)
+    set(LUXON_SERVER_ENABLE_MULTIPROCESSING OFF CACHE BOOL "Enable IPC system and game server subprocesses" FORCE)
 endif()
 
 # Basic defines

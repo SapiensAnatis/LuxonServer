@@ -26,10 +26,10 @@
 #endif
 #endif
 
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
 int main(int argc, char *argv[]) {
     Platform P;
 
-#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
     // If spawned as a subprocess intercept CLI flag and run as child
     if (argc >= 3 && std::string_view(argv[1]) == "--child-fd") {
 #ifdef __linux__
@@ -106,6 +106,9 @@ int main(int argc, char *argv[]) {
         }
 #endif
     };
+#else
+int main() {
+    Platform P;
 #endif
 
     // Boot primary process

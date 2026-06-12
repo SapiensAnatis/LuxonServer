@@ -1541,6 +1541,7 @@ ServerManagerHandle createServerManagerFromContents(const char *yaml_config_cont
 }
 
 ServerManagerHandle createServerManagerFromIPC(const char *ipc_fd) {
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
     if (!ipc_fd || !*ipc_fd)
         return wrap<ServerManagerHandle>(nullptr);
     return ffi_safe_call<ServerManagerHandle>(wrap<ServerManagerHandle>(nullptr), [=] {
@@ -1549,6 +1550,9 @@ ServerManagerHandle createServerManagerFromIPC(const char *ipc_fd) {
             return wrap<ServerManagerHandle>(nullptr);
         return wrap<ServerManagerHandle>(new server::ServerManager((server::IPC(*real_ipc_fd))));
     });
+#else
+    return wrap<ServerManagerHandle>(nullptr);
+#endif
 }
 
 void destroyServerManager(ServerManagerHandle manager) {
