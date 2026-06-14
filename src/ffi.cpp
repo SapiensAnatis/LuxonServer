@@ -485,9 +485,9 @@ ByteArrayHandle serializeSerValue(SerValueHandle val) {
         return wrap<ByteArrayHandle>(nullptr);
     return ffi_safe_call<ByteArrayHandle>(wrap<ByteArrayHandle>(nullptr), [=] {
         auto *v = unwrap<luxon::ser::Value>(val);
-        auto proto = luxon::ser::IProtocol::make(1, 8);
+        luxon::ser::IPCBinaryProtocol proto;
         luxon::ser::ByteWriter writer;
-        auto res = proto->EncodeValue(writer, *v);
+        auto res = proto.EncodeValue(writer, *v);
         if (!res.has_value())
             return wrap<ByteArrayHandle>(nullptr);
         return wrap<ByteArrayHandle>(new ByteArray(writer.take()));
@@ -498,9 +498,9 @@ bool deserializeSerValue(const uint8_t *buf, ffi_size_t len, SerValueHandle out_
     if (!buf || !out_val)
         return false;
     return ffi_safe_call<bool>(false, [=] {
-        auto proto = luxon::ser::IProtocol::make(1, 8);
+        luxon::ser::IPCBinaryProtocol proto;
         luxon::ser::ByteReader reader(std::span<const uint8_t>{buf, len});
-        auto res = proto->DecodeValue(reader);
+        auto res = proto.DecodeValue(reader);
         if (!res.has_value())
             return false;
 
