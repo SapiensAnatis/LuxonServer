@@ -9,14 +9,12 @@
 #include "string_hash.hpp"
 #include "logger.hpp"
 #include "hookpoints.hpp"
+#include "sock_selector.hpp"
 #ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
 #include "ipc.hpp"
 #endif
 #ifdef LUXON_SERVER_ENABLE_SETTINGS_DATABASE
 #include "settings_manager.hpp"
-#endif
-#ifndef LUXON_SERVER_POLL
-#include "sock_selector.hpp"
 #endif
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
 #include "http_server.hpp"
@@ -182,9 +180,7 @@ public:
 #endif
 
 private:
-#ifndef LUXON_SERVER_POLL
     SockSelector sock_selector_;
-#endif
 
     std::shared_ptr<logger> log_;
     std::vector<ServerConfig> configs_;

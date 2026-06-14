@@ -30,10 +30,8 @@ public:
     using socket_t = int;
 #endif
 
-#ifndef LUXON_SERVER_POLL
     std::function<void(socket_t)> on_create_fd;
     std::function<void(socket_t)> on_delete_fd;
-#endif
 
     explicit HttpServer(ServerManager& manager);
     ~HttpServer();
@@ -41,9 +39,7 @@ public:
     // Bind to port and start listening (non-blocking)
     bool bind(const std::string& address, uint16_t port);
 
-#ifndef LUXON_SERVER_POLL
     void service_later(int fd);
-#endif
     void service_now();
 
 private:
@@ -61,9 +57,7 @@ private:
     socket_t server_fd_ = -1;
     std::vector<HttpClient> clients_;
 
-#ifndef LUXON_SERVER_POLL
     std::vector<int> servicable_fds_;
-#endif
 
     std::string index_html;
 

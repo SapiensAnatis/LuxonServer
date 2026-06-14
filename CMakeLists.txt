@@ -27,7 +27,6 @@ include(CMakeDependentOption)
 # Core server options
 option(LUXON_SERVER_ENABLE_WEBSERVER "Enable the built-in webserver" ON)
 option(LUXON_SERVER_ENABLE_MULTIPROCESSING "Enable IPC system and game server subprocesses" OFF)
-option(LUXON_SERVER_POLL "Poll blindly instead of select with timeout, less efficient" OFF)
 option(LUXON_USE_EMBED_RESOURCE "Use EmbedResource instead of incbin.h" OFF)
 
 # Profiling options
@@ -200,10 +199,6 @@ if (LUXON_USE_EMBED_RESOURCE)
 endif()
 
 # Configuration
-if (LUXON_SERVER_POLL)
-    target_compile_definitions(luxon_server_lib PUBLIC LUXON_SERVER_POLL)
-endif()
-
 if (LUXON_SERVER_ENABLE_WEBSERVER)
     target_sources(luxon_server_lib PRIVATE include/luxon/server/http_server.hpp src/http_server.cpp)
     target_compile_definitions(luxon_server_lib PUBLIC

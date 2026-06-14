@@ -199,15 +199,11 @@ HttpServer::HttpServer(ServerManager& manager) : server_manager_(manager) {
 HttpServer::~HttpServer() {
     if (server_fd_ != -1) {
         CLOSE_SOCKET(server_fd_);
-#ifndef LUXON_SERVER_POLL
         on_delete_fd(server_fd_);
-#endif
     }
     for (auto& c : clients_) {
         CLOSE_SOCKET(c.fd);
-#ifndef LUXON_SERVER_POLL
         on_delete_fd(c.fd);
-#endif
     }
 #if defined(_WIN32)
     WSACleanup();
@@ -220,9 +216,7 @@ bool HttpServer::bind(const std::string& address, uint16_t port) {
     server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd_ < 0)
         return false;
-#ifndef LUXON_SERVER_POLL
     on_create_fd(server_fd_);
-#endif
     const int opt = 1;
     setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&opt), sizeof(opt));
     set_nonblocking(server_fd_);
@@ -249,9 +243,7 @@ bool HttpServer::bind(const std::string& address, uint16_t port) {
     return true;
 }
 
-#ifndef LUXON_SERVER_POLL
 void HttpServer::service_later(int fd) { servicable_fds_.push_back(fd); }
-#endif
 
 void HttpServer::service_now() {
     ZoneScoped;
@@ -259,9 +251,7 @@ void HttpServer::service_now() {
     if (server_fd_ == -1)
         return;
 
-#ifndef LUXON_SERVER_POLL
     if (std::ranges::contains(servicable_fds_, server_fd_))
-#endif
     {
         sockaddr_in cli_addr;
         socklen_t clilen = sizeof(cli_addr);
@@ -269,9 +259,7 @@ void HttpServer::service_now() {
         if (new_fd >= 0) {
             set_nonblocking(new_fd);
             clients_.push_back({new_fd, "", "", false, false});
-#ifndef LUXON_SERVER_POLL
             on_create_fd(new_fd);
-#endif
         }
     }
 
@@ -280,10 +268,7 @@ void HttpServer::service_now() {
             continue;
 
         // Handle Incoming Data
-#ifndef LUXON_SERVER_POLL
-        if (std::ranges::contains(servicable_fds_, client.fd))
-#endif
-        {
+        if (std::ranges::contains(servicable_fds_, client.fd)) {
             char buffer[4096];
             const int n = recv(client.fd, buffer, sizeof(buffer), 0);
 
@@ -327,17 +312,13 @@ void HttpServer::service_now() {
     std::erase_if(clients_, [this](const HttpClient& c) {
         if (c.mark_for_delete) {
             CLOSE_SOCKET(c.fd);
-#ifndef LUXON_SERVER_POLL
             on_delete_fd(c.fd);
-#endif
             return true;
         }
         return false;
     });
 
-#ifndef LUXON_SERVER_POLL
     servicable_fds_.clear();
-#endif
 }
 
 void HttpServer::queue_data(HttpClient& client, std::string_view data, bool close_connection) {

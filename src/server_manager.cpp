@@ -44,14 +44,6 @@
  * - Instantiates the `http_server_` instance and handles automated lifecycle updates.
  * - Collects performance diagnostics (`idle_time`, `busy_time` metrics) per loop tick.
  * - Hooks HTTP socket file descriptors directly into the main read selector (if not polling).
- *
- * LUXON_SERVER_POLL
- * Determines the network I/O multiplexing strategy.
- * - If DEFINED: Uses a manual polling model. The `sock_selector_` logic and its automated
- *   descriptor registration blocks are skipped entirely.
- * - If UNDEFINED: Uses an event-driven model via `sock_selector_` (wrapping select/epoll).
- *   Registers native server handles and embedded HTTP file descriptors to sleep efficiently
- *   until socket readability is confirmed.
  */
 
 #include "server_manager.hpp"
@@ -577,10 +569,8 @@ bool ServerManager::run_once() {
         const auto start_time = std::chrono::steady_clock::now();
 #endif
 
-#ifndef LUXON_SERVER_POLL
         // Run sock selector
         sock_selector_.run(125);
-#endif
 
 #ifdef LUXON_SERVER_ENABLE_WEBSERVER
         // End idle performance timer
@@ -603,14 +593,6 @@ bool ServerManager::run_once() {
         if (parent_ipc_.is_open())
             while (const auto ipc_msg = parent_ipc_.receive_message())
                 process_parent_ipc_message(parent_ipc_, *ipc_msg);
-
-#ifdef LUXON_SERVER_POLL
-        // Receive and process an IPC message from children
-        for (auto& [port, ipc] : subprocesses_)
-            if (ipc.is_open())
-                if (const auto ipc_msg = ipc.receive_message())
-                    process_child_ipc_message(ipc, *ipc_msg);
-#endif
 
         ipc_broadcast_skip_ = nullptr;
 #endif
@@ -739,11 +721,9 @@ void ServerManager::setup_http_server() {
 
     log_->info("Initializing HTTP Server on port {}", http_config_->port);
     http_server_.emplace(*this);
-#ifndef LUXON_SERVER_POLL
     http_server_->on_create_fd =
         std::bind(&SockSelector::add_read_fd, &sock_selector_, std::placeholders::_1, [this](int fd) { http_server_->service_later(fd); });
     http_server_->on_delete_fd = std::bind(&SockSelector::remove_read_fd, &sock_selector_, std::placeholders::_1);
-#endif
     if (!http_server_->bind(http_config_->address, http_config_->port))
         log_->error("Failed to bind HTTP server to port {}! Is the port already in use?", http_config_->port);
 }
@@ -1057,13 +1037,11 @@ void ServerManager::setup() {
         }
 
         // Add server to sock selector
-#ifndef LUXON_SERVER_POLL
         if (!sock_selector_.add_read_fd(server.native_handle(), [&server](int fd) {
                 ZoneScopedN("service_server");
                 server.service_self();
             }))
             log_->error("Failed to add new server to sock selector!", ServerTypeToString(config.type), config.port);
-#endif
     }
 
     next_server_it_ = servers_.end();
@@ -1087,14 +1065,12 @@ void ServerManager::setup_subprocess(const ServerConfig& config) {
     // Emplace IPC into manager's tracked subprocesses
     IPC& ipc = subprocesses_.try_emplace(config.port, std::move(*ipc_opt)).first->second;
 
-#ifndef LUXON_SERVER_POLL
     // Set sock selector handler
     sock_selector_.add_read_fd(ipc.get_fd(), [this, &ipc](SockSelector::socket_t) {
         while (const auto ipc_msg = ipc.receive_message())
             process_child_ipc_message(ipc, *ipc_msg);
         ipc_broadcast_skip_ = nullptr;
     });
-#endif
 
     // Trigger external subprocess handler using new child socket
     handle_start_subprocess(IPC::socket_to_string(ipc.get_child_fd()));
