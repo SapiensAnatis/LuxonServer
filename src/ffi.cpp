@@ -506,7 +506,7 @@ bool deserializeSerValue(const uint8_t *buf, ffi_size_t len, SerValueHandle out_
 
         auto *target = unwrap<luxon::ser::Value>(out_val);
         *target = *res;
-        return false;
+        return true;
     });
 }
 
