@@ -454,7 +454,7 @@ bool deserializeSerMessage(const uint8_t *buf, ffi_size_t len, SerMessageHandle 
 
         auto *target = unwrap<luxon::ser::Message>(out_val);
         *target = *res;
-        return false;
+        return true;
     });
 }
 
