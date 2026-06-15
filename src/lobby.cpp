@@ -66,8 +66,14 @@ std::expected<std::shared_ptr<Game>, ser::OperationResponseMessage> Lobby::creat
                                                              .return_code = ErrorCodes::Matchmaking::GameIdNotExists,
                                                              .debug_message = "Game id can't be empty"});
 
-    if (auto res = games.find(id); res != games.end())
-        return or_get ? res->second.lock() : nullptr;
+    if (auto res = games.find(id); res != games.end()) {
+        if (or_get)
+            return res->second.lock();
+
+        return std::unexpected(ser::OperationResponseMessage{.operation_code = OpCodes::Matchmaking::CreateGame,
+                                                             .return_code = ErrorCodes::Matchmaking::GameIdAlreadyExists,
+                                                             .debug_message = "Game id already exists"});
+    }
 
     const auto max_game_count = app->get_settings().max_game_count;
     if (max_game_count && app->get_game_count() > max_game_count) {

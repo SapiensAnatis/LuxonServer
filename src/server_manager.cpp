@@ -1100,12 +1100,10 @@ void ServerManager::setup_subprocess(const ServerConfig& config) {
         ServerConfig child_cfg = cfg;
         child_cfg.subprocess = false;
 
-        if (cfg.port == config.port && cfg.type == config.type) {
-            child_cfg.allow_unsolicited = true;
+        if (cfg.port == config.port && cfg.type == config.type)
             child_cfg.is_routing_only = false;
-        } else {
+        else
             child_cfg.is_routing_only = true;
-        }
         child_config.servers.emplace_back(std::move(child_cfg));
     }
 

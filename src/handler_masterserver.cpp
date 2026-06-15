@@ -320,12 +320,15 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             if (!server_manager_.mark_command_committed())
                 return;
 
+            // Synchronize game, peer and token
+            peer_->persistent->current_game = game;
+            sync_persistent_peer(server_manager_, *peer_->persistent);
+
             // Send response
             send(proto_->Serialize(resp));
 
             // Join the game
             peer_->log->info("Joining newly created game: {}", game->id);
-            peer_->persistent->current_game = game;
 
             return;
         }
@@ -410,6 +413,10 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
 
             // Expect user
             game->expected_users.emplace(peer_->persistent->user_id);
+
+            // Synchronize game, peer and token
+            peer_->persistent->current_game = game;
+            sync_persistent_peer(server_manager_, *peer_->persistent);
 
             // Build and send response
             ser::OperationResponseMessage resp{.operation_code = OpCodes::Matchmaking::JoinGame, .return_code = ErrorCodes::Core::Ok};
@@ -545,8 +552,9 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             if (!server_manager_.mark_command_committed())
                 return;
 
-            // Make token valid for this game
+            // Synchronize game, peer and token
             peer_->persistent->current_game = selected_game;
+            sync_persistent_peer(server_manager_, *peer_->persistent);
 
             // Expect users  TODO: expect all given users
             selected_game->expected_users.emplace(peer_->persistent->user_id);

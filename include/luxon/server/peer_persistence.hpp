@@ -25,4 +25,5 @@ struct PeerPersistent {
 void store_persistent_peer(ServerManager& server_manager, std::unique_ptr<PeerPersistent>&& pp);
 std::unique_ptr<PeerPersistent> load_persistent_peer(ServerManager& server_manager, std::string_view token, bool refresh_token = true);
 std::unique_ptr<PeerPersistent> create_persistent_peer();
+void sync_persistent_peer(ServerManager& server_manager, const PeerPersistent& pp);
 } // namespace server

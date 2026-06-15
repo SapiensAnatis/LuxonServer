@@ -297,10 +297,6 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
 
             const bool is_master = game->peers.empty();
 
-            // Mark game as created
-            if (is_master)
-                game->is_created = true;
-
             // Validate game ID
             if (params->get<DictKeyCodes::GameAndActor::GameId>() != game->id) {
                 const ser::OperationResponseMessage resp{.operation_code = req.operation_code,
@@ -367,6 +363,10 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             // No turning back
             if (!server_manager_.mark_command_committed())
                 return;
+
+            // Mark game as created
+            if (is_master)
+                game->is_created = true;
 
             // Apply game settings
             if (is_master) {
@@ -623,32 +623,48 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
         }
         }
     } else if (allow_unsolicited_) {
-        // Unsolicited join
-        if (req.operation_code == OpCodes::Matchmaking::JoinGame) {
+        // Unsolicited join or create
+        if (req.operation_code == OpCodes::Matchmaking::JoinGame || req.operation_code == OpCodes::Matchmaking::CreateGame) {
             const auto params = models::JoinOrCreateGame::decode(req);
             if (!params) {
                 send(proto_->Serialize(params.error()));
                 return;
             }
 
-            // Find game
+            // Find or create game
             auto lobby = peer_->persistent->app->get_lobby(); // Restrict to default lobby for now
-            auto game_res = lobby->games.find(params->get<DictKeyCodes::GameAndActor::GameId>());
-            if (game_res == lobby->games.end()) {
-                const ser::OperationResponseMessage resp{
-                    .operation_code = req.operation_code, .return_code = ErrorCodes::Matchmaking::GameIdNotExists, .debug_message = "Game does not exist"};
-                send(proto_->Serialize(resp));
-                return;
+            auto game_id = params->get<DictKeyCodes::GameAndActor::GameId>();
+
+            std::shared_ptr<Game> target_game;
+            if (auto game_res = lobby->games.find(game_id); game_res != lobby->games.end()) {
+                target_game = game_res->second.lock();
+            } else {
+                bool should_create = (req.operation_code == OpCodes::Matchmaking::CreateGame) || params->get<DictKeyCodes::AuthAndLobby::CreateIfNotExists>();
+
+                if (should_create) {
+                    auto new_game = lobby->create_game(std::string(game_id), "", true);
+                    if (!new_game) {
+                        send(proto_->Serialize(new_game.error()));
+                        return;
+                    }
+                    target_game = *new_game;
+                } else {
+                    const ser::OperationResponseMessage resp{
+                        .operation_code = req.operation_code, .return_code = ErrorCodes::Matchmaking::GameIdNotExists, .debug_message = "Game does not exist"};
+                    send(proto_->Serialize(resp));
+                    return;
+                }
             }
 
             // No turning back
             if (!server_manager_.mark_command_committed())
                 return;
 
-            // Set as current game and disallow unsolicited join to prevent infinite recursion if game is nullptr
-            peer_->persistent->current_game = game_res->second.lock();
+            // Set as current game and disallow unsolicited join to prevent infinite recursion
+            peer_->persistent->current_game = target_game;
             allow_unsolicited_ = false;
 
+            // Now that current_game is populated it will execute main logic block
             return HandleOperationRequest(std::move(req), is_encrypted, cmd_header);
         }
     }
