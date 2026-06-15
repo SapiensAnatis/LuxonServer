@@ -945,7 +945,7 @@ void ServerManager::setup() {
             auto *raw_handler = GetRawPointer(handler_ptr);
 
             // Install callbacks
-            enetPeer->on_log_message = [this, handler = handler_ptr](enet::LogLevel enet_level, std::string_view message) {
+            enetPeer->on_log_message = [this, handler = raw_handler](enet::LogLevel enet_level, std::string_view message) {
                 // Convert log level
                 log_level level;
                 switch (enet_level) {
@@ -961,7 +961,7 @@ void ServerManager::setup() {
                 handler->get_peer()->log->log(level, "[ENet] {}", message);
             };
 
-            enetPeer->on_state_changed = [this, handler = handler_ptr, raw_handler](enet::EnetConnectionState state) {
+            enetPeer->on_state_changed = [this, handler = raw_handler](enet::EnetConnectionState state) {
                 try {
                     handler->HandleENetConnectionStateChange(state);
                 } catch (const std::exception& e) {
@@ -975,12 +975,20 @@ void ServerManager::setup() {
                 if (state == enet::EnetConnectionState::Disconnected) {
                     handler->HandleDisconnect();
                     // Self-destruct handler, this will invalidate the pointer
-                    add_scheduled_task(0, [this, raw_handler]() { connections_.remove_if([raw_handler](auto& v) { return v.get() == raw_handler; }); });
+                    add_scheduled_task(0, [this, handler]() { connections_.remove_if([handler](auto& v) { return v.get() == handler; }); });
                 }
             };
 
+#ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+            enetPeer->on_payload_command = [this, handler_weak = std::weak_ptr<HandlerBase>(handler_ptr)](enet::EnetCommand&& cmd) {
+                auto handler = handler_weak.lock();
+                if (!handler)
+                    return;
+#else
             enetPeer->on_payload_command = [this, handler = handler_ptr](enet::EnetCommand&& cmd) {
+#endif
                 auto& peer = handler->get_peer();
+
 #ifndef NDEBUG
                 peer->log->trace("Received message using mode {} on channel {}:", static_cast<int>(enet::FlagsToEnetDeliveryMode(cmd.header.flags)),
                                  cmd.header.channel_id);
