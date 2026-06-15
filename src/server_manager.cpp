@@ -975,7 +975,7 @@ void ServerManager::setup() {
                 if (state == enet::EnetConnectionState::Disconnected) {
                     handler->HandleDisconnect();
                     // Self-destruct handler, this will invalidate the pointer
-                    connections_.remove_if([raw_handler](auto& v) { return v.get() == raw_handler; });
+                    add_scheduled_task(0, [this, raw_handler]() { connections_.remove_if([raw_handler](auto& v) { return v.get() == raw_handler; }); });
                 }
             };
 
