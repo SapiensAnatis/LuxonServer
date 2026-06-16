@@ -60,7 +60,7 @@ using LobbyStats = Model<Parameter<std::string, DictKeyCodes::AuthAndLobby::Lobb
 void MasterServerHandler::HandleSlowUpdate() {
     ZoneScoped;
 
-    if (wants_app_stats_ && last_app_stats_.get() > 8000) {
+    if (last_app_stats_.get() > 8000) {
         send_app_stats();
         last_app_stats_.reset();
     }
@@ -116,10 +116,9 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             // Fully remove player's reference to current game
             peer_->persistent->current_game.reset();
 
-            // Send stats once if requested
-            wants_app_stats_ = wants_lobby_stats;
+            // Send lobby stats if requested
             if (wants_lobby_stats)
-                send_app_stats();
+                send_lobby_stats();
 
             return;
         }
@@ -572,26 +571,6 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
 
             send(proto_->Serialize(resp));
             peer_->log->info("Matchmaking success. Joining game: {}", selected_game->id);
-            return;
-        }
-
-        case OpCodes::RpcAndMisc::Settings: {
-            ZoneScopedN("HandleOperationRequest_Settings");
-
-            const auto params = models::ClientSettings::decode(req);
-            if (!params) {
-                send(proto_->Serialize(params.error()));
-                return;
-            }
-
-            // No turning back
-            if (!server_manager_.mark_command_committed())
-                return;
-
-            // Does the client want lobby stats?
-            wants_app_stats_ = params->get<DictKeyCodes::AuthAndLobby::LobbyStats>().value_or(true);
-
-            // No response
             return;
         }
 
