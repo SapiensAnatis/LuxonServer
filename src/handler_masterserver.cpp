@@ -730,7 +730,7 @@ void MasterServerHandler::send_app_stats() {
     event.parameters[DictKeyCodes::LoadBalancing::PeerCount] = static_cast<int32_t>(server_manager_.get_connection_count<GameServerHandler>());
     event.parameters[DictKeyCodes::LoadBalancing::MasterPeerCount] = static_cast<int32_t>(server_manager_.get_connection_count<MasterServerHandler>());
 
-    send(proto_->Serialize(event));
+    send(proto_->Serialize(event), enet::EnetSendOptions{.mode = luxon::enet::EnetDeliveryMode::Unreliable});
 }
 
 ser::Dictionary MasterServerHandler::get_lobby_stats(std::function<bool(const Lobby&)> lobby_filter) {
@@ -767,7 +767,7 @@ void MasterServerHandler::send_lobby_stats() {
     event.event_code = EventCodes::LobbyStats;
     event.parameters = get_lobby_stats();
 
-    send(proto_->Serialize(event));
+    send(proto_->Serialize(event), enet::EnetSendOptions{.mode = luxon::enet::EnetDeliveryMode::Unreliable});
 }
 
 ser::HashtablePtr MasterServerHandler::get_game_list(Lobby& lobby, const Game& game) {
