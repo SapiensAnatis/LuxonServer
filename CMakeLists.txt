@@ -139,16 +139,16 @@ add_library(luxon_server_lib
     include/luxon/server/lobby.hpp    include/luxon/server/string_hash.hpp  src/handler_base.cpp src/json.hpp      src/peer_persistence.cpp
     include/luxon/server/hookpoints.hpp
     include/luxon/server/data_model.hpp
+    include/luxon/server/pfr_pack.hpp
     include/luxon/server/sqlite3.h src/sqlite3.c
     src/lobby_vt.hpp src/lobby_vt.cpp
 
     tracy/public/tracy/Tracy.hpp
     src/tracy_mem.cpp
-    include/luxon/server/pfr_pack.hpp
 )
 target_link_libraries(luxon_server_lib
     PRIVATE magic_enum luxon_http_parser
-    PUBLIC sanmake commoncpp luxon_enet luxon_ser
+    PUBLIC sanmake commoncpp luxon_enet luxon_ser boost_pfr
 )
 target_include_directories(luxon_server_lib PRIVATE include/luxon/server tracy/public PUBLIC include)
 target_compile_definitions(luxon_server_lib PRIVATE SQLITE_CUSTOM_INCLUDE=sqlite3-config.h)
@@ -209,7 +209,6 @@ if (LUXON_SERVER_ENABLE_WEBSERVER)
 endif()
 
 if (LUXON_SERVER_ENABLE_MULTIPROCESSING)
-    target_link_libraries(luxon_server_lib PRIVATE boost_pfr)
     target_sources(luxon_server_lib PRIVATE
         include/luxon/server/ipc.hpp src/ipc.cpp
         include/luxon/server/ipc_codes.hpp
