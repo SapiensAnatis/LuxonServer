@@ -343,7 +343,7 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                 auto& game = get_game();
                 Result res;
 
-                if (game->peers.empty()) {
+                if (!game->is_created) {
                     OnCreateGameCallInfo info{.creator = peer_,
                                               .is_join = req.operation_code == OpCodes::Matchmaking::JoinGame,
                                               .create_if_not_exist = static_cast<bool>(params->get<DictKeyCodes::AuthAndLobby::CreateIfNotExists>())};
