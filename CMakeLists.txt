@@ -144,6 +144,7 @@ add_library(luxon_server_lib
 
     tracy/public/tracy/Tracy.hpp
     src/tracy_mem.cpp
+    include/luxon/server/pfr_pack.hpp
 )
 target_link_libraries(luxon_server_lib
     PRIVATE magic_enum luxon_http_parser

@@ -114,7 +114,7 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             auto& app = peer_->persistent->app;
 
             // Fully remove player's reference to current game
-            peer_->persistent->current_game.reset();
+            peer_->persistent->reset_game();
 
             // Send lobby stats if requested
             if (wants_lobby_stats)
@@ -320,14 +320,12 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                 return;
 
             // Synchronize game, peer and token
-            peer_->persistent->current_game = game;
+            peer_->log->info("Joining newly created game: {}", game->id);
+            peer_->persistent->invite(std::move(game), true);
             sync_persistent_peer(server_manager_, *peer_->persistent);
 
             // Send response
             send(proto_->Serialize(resp));
-
-            // Join the game
-            peer_->log->info("Joining newly created game: {}", game->id);
 
             return;
         }
@@ -413,10 +411,6 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             // Expect user
             game->expected_users.emplace(peer_->persistent->user_id);
 
-            // Synchronize game, peer and token
-            peer_->persistent->current_game = game;
-            sync_persistent_peer(server_manager_, *peer_->persistent);
-
             // Build and send response
             ser::OperationResponseMessage resp{.operation_code = OpCodes::Matchmaking::JoinGame, .return_code = ErrorCodes::Core::Ok};
             resp.parameters[DictKeyCodes::LoadBalancing::Address] =
@@ -425,8 +419,12 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             if (game->id != game_id)
                 resp.parameters[DictKeyCodes::GameAndActor::GameId] = game->id;
 
-            send(proto_->Serialize(resp));
+            // Synchronize game, peer and token
             peer_->log->info("Joining {} game: {}", is_new ? "newly created" : "existing", game->id);
+            peer_->persistent->invite(std::move(game), is_new);
+            sync_persistent_peer(server_manager_, *peer_->persistent);
+
+            send(proto_->Serialize(resp));
 
             return;
         }
@@ -524,6 +522,7 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             }
 
             // Handle no-match condition
+            bool is_new = false;
             if (!selected_game) {
                 if (!params->get<DictKeyCodes::AuthAndLobby::CreateIfNotExists>()) {
                     const ser::OperationResponseMessage resp{.operation_code = OpCodes::Matchmaking::JoinRandomGame,
@@ -545,15 +544,12 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                     return;
                 }
                 selected_game = *game_expected;
+                is_new = true;
             }
 
             // No turning back
             if (!server_manager_.mark_command_committed())
                 return;
-
-            // Synchronize game, peer and token
-            peer_->persistent->current_game = selected_game;
-            sync_persistent_peer(server_manager_, *peer_->persistent);
 
             // Expect users  TODO: expect all given users
             selected_game->expected_users.emplace(peer_->persistent->user_id);
@@ -569,8 +565,12 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
             resp.parameters[DictKeyCodes::LoadBalancing::Token] = peer_->persistent->token;
             resp.parameters[DictKeyCodes::GameAndActor::GameId] = selected_game->id;
 
-            send(proto_->Serialize(resp));
+            // Synchronize game, peer and token
             peer_->log->info("Matchmaking success. Joining game: {}", selected_game->id);
+            peer_->persistent->invite(std::move(selected_game), is_new);
+            sync_persistent_peer(server_manager_, *peer_->persistent);
+
+            send(proto_->Serialize(resp));
             return;
         }
 
@@ -601,14 +601,16 @@ void MasterServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& 
                     auto peer_conn = conn->get_peer();
                     if (peer_conn && peer_conn->persistent && peer_conn->persistent->user_id == friend_id) {
                         is_online = true;
-                        if (auto game = peer_conn->persistent->current_game) {
-                            if ((flags & FindFriendsOptions::CreatedOnGS) && !game->find_peer(peer_conn))
-                                break;
-                            if ((flags & FindFriendsOptions::Visible) && !game->is_visible)
-                                break;
-                            if ((flags & FindFriendsOptions::Open) && !game->is_open)
-                                break;
-                            room_id = game->id;
+                        if (auto expected_game = server_manager_.get_game(*peer_conn->persistent->app, peer_conn->persistent->get_invitation())) {
+                            if (auto game = *expected_game) {
+                                if ((flags & FindFriendsOptions::CreatedOnGS) && !game->find_peer(peer_conn))
+                                    break;
+                                if ((flags & FindFriendsOptions::Visible) && !game->is_visible)
+                                    break;
+                                if ((flags & FindFriendsOptions::Open) && !game->is_open)
+                                    break;
+                                room_id = game->id;
+                            }
                         }
                         break;
                     }

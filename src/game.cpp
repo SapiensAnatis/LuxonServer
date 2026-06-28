@@ -4,6 +4,7 @@
 #include "game.hpp"
 #include "global.hpp"
 #include "server_manager.hpp"
+#include "peer_persistence.hpp"
 #include "ipc_codes.hpp"
 
 #include <luxon/ser_interface.hpp>
@@ -11,6 +12,14 @@
 #include <tracy/Tracy.hpp>
 
 namespace server {
+void GameInfo::encode_game_info(ser::ParameterList& params) const {
+    if (has_game_info()) {
+        params[DictKeyCodes::GameAndActor::GameId] = std::string(id);
+        params[DictKeyCodes::LoadBalancing::Address] = std::string(server_address);
+    }
+    lobby.encode_lobby_info(params);
+}
+
 bool GamePeer::has_interest_group(uint8_t group) const {
     if (group == 0)
         return true;
@@ -74,26 +83,33 @@ Game::~Game() {
 Game::Game(std::shared_ptr<Lobby> lobby, std::string id, std::string_view server_address)
     : lobby(std::move(lobby)), id(std::move(id)), server_address(get_server_manager().get_static_endpoint_address_str(server_address)) {}
 
-void Game::add_game_info(ser::ParameterList& params) {
+void Game::add_game_info(ser::ParameterList& params) const {
     params[DictKeyCodes::GameAndActor::GameId] = id;
     params[DictKeyCodes::LoadBalancing::Address] = std::string(server_address);
     lobby->add_lobby_info(params);
 }
 
+GameInfo Game::get_game_info() const {
+    GameInfo fres(lobby->get_lobby_info());
+    fres.id = id;
+    fres.server_address = server_address;
+    return fres;
+}
+
 bool Game::matches_game_info(const GameInfo& info) const {
-    if (info.game_id != id)
+    if (info.id != id)
         return false;
 
-    if (info.lobby_name != lobby->name)
+    if (info.lobby.name != lobby->name)
         return false;
 
-    if (info.lobby_type != lobby->type)
+    if (info.lobby.type != lobby->type)
         return false;
 
-    if (info.app_id != lobby->app->id)
+    if (info.lobby.app.id != lobby->app->id)
         return false;
 
-    if (info.app_version != lobby->app->version)
+    if (info.lobby.app.version != lobby->app->version)
         return false;
 
     return true;
@@ -572,7 +588,7 @@ GameInfo Game::decode_game_info(const ser::ParameterList& params) {
     GameInfo fres(Lobby::decode_lobby_info(params));
     for (const auto& [key, val] : params) {
         if (key == DictKeyCodes::GameAndActor::GameId)
-            fres.game_id = val.get<std::string>();
+            fres.id = val.get<std::string>();
         if (key == DictKeyCodes::LoadBalancing::Address)
             fres.server_address = val.get<std::string>();
     }

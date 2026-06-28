@@ -121,10 +121,17 @@ size_t Lobby::get_master_peer_count() const {
     return fres;
 }
 
-void Lobby::add_lobby_info(ser::ParameterList& params) {
+void Lobby::add_lobby_info(ser::ParameterList& params) const {
     params[DictKeyCodes::AuthAndLobby::LobbyName] = name;
     params[DictKeyCodes::AuthAndLobby::LobbyType] = type;
     app->add_app_info(params);
+}
+
+LobbyInfo Lobby::get_lobby_info() const {
+    LobbyInfo fres(app->get_app_info());
+    fres.name = name;
+    fres.type = type;
+    return fres;
 }
 
 std::vector<std::string> Lobby::query_lobbies(const std::string& sql_queries) {
@@ -189,9 +196,9 @@ LobbyInfo Lobby::decode_lobby_info(const ser::ParameterList& params) {
     LobbyInfo fres(App::decode_app_info(params));
     for (const auto& [key, val] : params) {
         if (key == DictKeyCodes::AuthAndLobby::LobbyName)
-            fres.lobby_name = val.get<std::string>();
+            fres.name = val.get<std::string>();
         if (key == DictKeyCodes::AuthAndLobby::LobbyType)
-            fres.lobby_type = val.get<uint8_t>();
+            fres.type = val.get<uint8_t>();
     }
     return fres;
 }

@@ -5,6 +5,7 @@
 #include "global.hpp"
 #include "server_manager.hpp"
 #include "authentication.hpp"
+#include "peer_persistence.hpp"
 
 #include <luxon/ser_interface.hpp>
 #include <luxon/common_codes.hpp>

@@ -44,9 +44,13 @@ class App;
 struct Lobby;
 struct Peer;
 
-struct GameInfo : public LobbyInfo {
-    std::string_view game_id;
-    std::string_view server_address;
+struct GameInfo {
+    LobbyInfo lobby;
+
+    std::string_view id, server_address;
+
+    void encode_game_info(ser::ParameterList& params) const;
+    bool has_game_info() const { return lobby.has_lobby_info() && !id.empty(); }
 };
 
 struct GamePeer {
@@ -121,7 +125,13 @@ struct Game : std::enable_shared_from_this<Game> {
     /// \brief Adds appid, appver, lobbyid, lobbytype, gameid to parameter list
     /// \param Parameter list to add info to
     ///
-    void add_game_info(ser::ParameterList& params);
+    void add_game_info(ser::ParameterList& params) const;
+
+    ///
+    /// \brief Gets GameInfo for current game
+    /// \return Struct containing game identification information
+    ///
+    GameInfo get_game_info() const;
 
     ///
     /// \brief Checks if game info matches this game

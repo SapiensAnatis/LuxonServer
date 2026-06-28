@@ -23,14 +23,22 @@ struct LobbyIdHash {
 };
 
 struct AppInfo {
-    std::string_view app_id, app_version;
+    std::string_view id, version;
+
+    void encode_app_info(ser::ParameterList& params) const;
+    bool has_app_info() const { return !id.empty(); }
 };
 
-struct LobbyInfo : public AppInfo {
-    std::string_view lobby_name;
-    uint8_t lobby_type{};
+struct LobbyInfo {
+    AppInfo app;
 
-    operator LobbyId() const { return {lobby_name, lobby_type}; }
+    std::string_view name;
+    uint8_t type{};
+
+    operator LobbyId() const { return {name, type}; }
+
+    void encode_lobby_info(ser::ParameterList& params) const;
+    bool has_lobby_info() const { return app.has_app_info(); }
 };
 
 struct AppSettings {
@@ -65,7 +73,8 @@ public:
     size_t get_game_count() const;
     size_t get_peer_count() const;
 
-    void add_app_info(ser::ParameterList& params);
+    void add_app_info(ser::ParameterList& params) const;
+    AppInfo get_app_info() const;
 
     const AppSettings& get_settings() const { return settings_; }
     std::shared_ptr<Lobby> get_lobby(LobbyId id = {});

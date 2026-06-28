@@ -3,6 +3,8 @@
 
 #include "peer.hpp"
 #include "global.hpp"
+#include "game.hpp"
+#include "peer_persistence.hpp"
 
 #include <luxon/visualizer.hpp>
 #include <tracy/Tracy.hpp>

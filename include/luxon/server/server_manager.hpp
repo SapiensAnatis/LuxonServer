@@ -6,10 +6,12 @@
 #include "global.hpp"
 #include "metrics.hpp"
 #include "handler_base.hpp"
+#include "peer_persistence.hpp"
 #include "string_hash.hpp"
 #include "logger.hpp"
 #include "hookpoints.hpp"
 #include "sock_selector.hpp"
+#include "game.hpp"
 #ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
 #include "ipc.hpp"
 #endif
@@ -216,6 +218,7 @@ private:
 #ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
     std::unique_ptr<CommandRestarter> active_command_restarter_;
     bool active_command_restarter_allowed_ = false;
+    bool inside_command_ = false;
 #endif
 
     bool running_ = true;
@@ -325,6 +328,12 @@ public:
     /// \return Shared pointer to the lobby
     ///
     std::shared_ptr<Lobby> get_lobby(App& app, const LobbyInfo& info);
+    ///
+    /// \brief Retrieves a lobby instance
+    /// \param info Identifying information for the target lobby
+    /// \return Shared pointer to the lobby
+    ///
+    std::shared_ptr<Lobby> get_lobby(const LobbyInfo& info) { return get_lobby(*get_app(info.app), info); }
 
     ///
     /// \brief Retrieves a game instance within a specific lobby
@@ -333,6 +342,28 @@ public:
     /// \return Expected containing a shared pointer to the game on success, or an error message string on failure
     ///
     std::expected<std::shared_ptr<Game>, std::string> get_game(Lobby& lobby, const GameInfo& info);
+    ///
+    /// \brief Retrieves a game instance within a specific app
+    /// \param app Parent application hosting the game
+    /// \param info Identifying information for the target game
+    /// \return Expected containing a shared pointer to the game on success, or an error message string on failure
+    ///
+    std::expected<std::shared_ptr<Game>, std::string> get_game(App& app, const GameInfo& info) { return get_game(*get_lobby(app, info.lobby), info); }
+    ///
+    /// \brief Retrieves a game instance
+    /// \param info Identifying information for the target game
+    /// \return Expected containing a shared pointer to the game on success, or an error message string on failure
+    ///
+    std::expected<std::shared_ptr<Game>, std::string> get_game(const GameInfo& info) { return get_game(*get_lobby(info.lobby), info); }
+
+    bool is_game_external(Game& game) const {
+#ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
+        for (const auto& external_game : external_games_)
+            if (external_game.get() == &game)
+                return true;
+#endif
+        return false;
+    }
 
 #ifdef LUXON_SERVER_ENABLE_MULTIPROCESSING
     ///
@@ -452,7 +483,7 @@ public:
     ///
     bool should_abort_active_command() const {
 #ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
-        return active_command_restarter_ == nullptr;
+        return active_command_restarter_ == nullptr && inside_command_;
 #else
         return false;
 #endif

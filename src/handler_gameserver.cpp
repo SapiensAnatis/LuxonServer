@@ -47,13 +47,14 @@ using ChangeInterestGroups = Model<Parameter<ser::ByteArray, RoutingAndEvents::A
 void GameServerHandler::HandleDisconnect() {
     ZoneScoped;
 
-    if (auto& game = get_game()) {
+    if (auto& game = current_game_) {
         if (game_peer_) {
+
             // Cleanup cache if enabled
             if (game->flags & DictKeyCodes::RoutingAndEvents::CleanupCacheOnLeave)
                 game->event_cache.remove_if([&](const Event& cached_event) { return cached_event.sender_actor_id == game_peer_->actor_id; });
 
-            if (!has_left) {
+            if (!has_left_) {
                 // Call into plugins
                 GAME_PLUGINS_INVOKE({
                     OnLeaveGameCallInfo info{.leaver = game_peer_};
@@ -62,10 +63,8 @@ void GameServerHandler::HandleDisconnect() {
                 });
             }
 
-            if (!server_manager_.mark_command_committed())
-                return;
-
             // Remove peer
+            peer_->log->info("Removing peer from game...");
             const int32_t actor_id = game_peer_ ? game_peer_->actor_id : 0;
             const bool was_master = actor_id == game->master_actor;
             if (!game->remove_peer(peer_))
@@ -82,20 +81,21 @@ void GameServerHandler::HandleDisconnect() {
                 event.top_params[DictKeyCodes::GameAndActor::ActorList] = actor_ids;
                 if (was_master)
                     event.top_params[GameProps::MasterClientId] = game->master_actor;
-                get_game()->broadcast_event(event);
+                current_game_->broadcast_event(event);
             }
         }
 
-        peer_->persistent->current_game.reset();
         game.reset();
     }
+
+    HandlerBase::HandleDisconnect();
 }
 
 void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& req, bool is_encrypted, const enet::EnetCommandHeader& cmd_header) {
     ZoneScoped;
 
     const auto ensure_is_master = [&]() {
-        const bool is_master = game_peer_ && game_peer_->actor_id == get_game()->master_actor || get_game()->peers.size() == 0;
+        const bool is_master = game_peer_ && game_peer_->actor_id == current_game_->master_actor || current_game_->peers.size() == 0;
         if (!is_master) {
             const ser::OperationResponseMessage resp{
                 .operation_code = req.operation_code, .return_code = ErrorCodes::Core::OperationNotAllowedInCurrentState, .debug_message = "Must be master"};
@@ -139,13 +139,41 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             send(proto_->Serialize(resp, is_encrypted));
 
             // Disconnect on error
-            if (!peer_->is_authenticated())
+            if (!peer_->is_authenticated()) {
                 peer_->disconnect();
+                return;
+            }
+
+            // Set current game
+            auto& pp = *peer_->persistent;
+            auto expected_game = server_manager_.get_game(pp.get_invitation());
+            pp.reset_game(); // Effectively expire peer's game invitation and memory ownership
+            if (expected_game) {
+                if (server_manager_.is_game_external(**expected_game)) {
+                    peer_->log->error("Peer tried to join an external game! Forcing disconnect.");
+                    const ser::OperationResponseMessage resp{.operation_code = req.operation_code,
+                                                             .return_code = ErrorCodes::Matchmaking::ServerForbidden,
+                                                             .debug_message = "Not invited to server"};
+                    send(proto_->Serialize(resp), enet::EnetSendOptions{.channel = cmd_header.channel_id});
+                    peer_->disconnect();
+                    return;
+                } else {
+                    current_game_ = std::move(*expected_game);
+                }
+            } else {
+                peer_->log->error("Persistent peer doesn't have valid game assigned! Forcing disconnect.");
+                const ser::OperationResponseMessage resp{.operation_code = req.operation_code,
+                                                         .return_code = ErrorCodes::Matchmaking::ServerForbidden,
+                                                         .debug_message = "Not invited to any game server"};
+                send(proto_->Serialize(resp), enet::EnetSendOptions{.channel = cmd_header.channel_id});
+                peer_->disconnect();
+                return;
+            }
 
             return;
         }
         }
-    } else if (auto game = get_game()) {
+    } else if (auto game = current_game_) {
 
         if (req.operation_code == OpCodes::Lite::RaiseEvent) {
             ZoneScopedN("HandleOperationRequest_RaiseEvent");
@@ -308,19 +336,19 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
 
             if (is_master) {
 #ifdef LUXON_SERVER_ENABLE_PLUGINS
-                if (get_game()->plugins.empty())
+                if (current_game_->plugins.empty())
 #endif
                 {
                     // Load given plugins if creating room
                     for (const std::string& plugin_name : params->get<DictKeyCodes::RpcAndPlugins::Plugins>()) {
 #ifdef LUXON_SERVER_ENABLE_PLUGINS
-                    auto plugin = game_plugins::registry::instantiate(get_game().get(), plugin_name);
-                    if (!plugin) {
-                        peer_->log->warn("Attempting to load unknown game plugin: {}", plugin_name);
-                        continue;
-                    }
+                        auto plugin = game_plugins::registry::instantiate(current_game_.get(), plugin_name);
+                        if (!plugin) {
+                            peer_->log->warn("Attempting to load unknown game plugin: {}", plugin_name);
+                            continue;
+                        }
 
-                    get_game()->plugins.emplace_back(std::move(plugin))->OnAttach();
+                        current_game_->plugins.emplace_back(std::move(plugin))->OnAttach();
 #else
                 peer_->log->warn("Attempting to load game plugin when plugins are disabled: {}", plugin_name);
 #endif
@@ -340,7 +368,7 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
 
             // Call into plugins
             GAME_PLUGINS_INVOKE({
-                auto& game = get_game();
+                auto& game = current_game_;
                 Result res;
 
                 if (!game->is_created) {
@@ -396,7 +424,7 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             auto all_actor_props = game->get_actor_props();
 
             // Create peer for game
-            auto game_peer = get_game()->create_peer(peer_);
+            auto game_peer = current_game_->create_peer(peer_);
             if (!game_peer.is_valid()) {
                 peer_->log->error("Game peer could not be created. Connection must terminate now.");
                 peer_->disconnect();
@@ -501,7 +529,7 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
             send(proto_->Serialize(resp));
 
             // Disconnect, handler will do the rest
-            has_left = true;
+            has_left_ = true;
             peer_->disconnect();
 
             return;
@@ -661,10 +689,10 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                 return;
 
             // Set as current game and disallow unsolicited join to prevent infinite recursion
-            peer_->persistent->current_game = target_game;
+            peer_->persistent->invite(std::move(target_game), req.operation_code == OpCodes::Matchmaking::CreateGame);
             allow_unsolicited_ = false;
 
-            // Now that current_game is populated it will execute main logic block
+            // Now that invitation is populated it will execute main logic block
             return HandleOperationRequest(std::move(req), is_encrypted, cmd_header);
         }
     }

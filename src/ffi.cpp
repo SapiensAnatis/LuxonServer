@@ -5,7 +5,9 @@
 
 #include "luxon_server_ffi.h"
 #include "luxon/server/server_manager.hpp"
+#include "luxon/server/handler_gameserver.hpp"
 #include "luxon/server/game.hpp"
+#include "luxon/server/peer_persistence.hpp"
 #include "luxon/server/lobby.hpp"
 #include "luxon/server/peer.hpp"
 #include "luxon/server/logger.hpp"
@@ -624,9 +626,31 @@ const char *peerGetUserId(PeerHandle peer) {
 }
 
 GameHandle peerGetCurrentGame(PeerHandle peer) {
-    if (auto *p = unwrap<server::Peer>(peer))
-        if (auto& pp = p->persistent)
-            return wrap<GameHandle>(pp->current_game.get());
+    if (auto *p = unwrap<server::Peer>(peer)) {
+        if (auto& pp = p->persistent) {
+            if (!pp->app)
+                return wrap<GameHandle>(nullptr);
+            for (const auto& connection : pp->app->server_manager.get_connections()) {
+                if (!connection)
+                    continue;
+                if (auto *game_server_handler = dynamic_cast<server::GameServerHandler *>(connection.get()))
+                    return wrap<GameHandle>(game_server_handler->get_current_game().get());
+            }
+        }
+    }
+    return wrap<GameHandle>(nullptr);
+}
+
+GameHandle peerGetInvitedGame(PeerHandle peer) {
+    if (auto *p = unwrap<server::Peer>(peer)) {
+        if (auto& pp = p->persistent) {
+            if (!pp->app)
+                return wrap<GameHandle>(nullptr);
+            // Don't give out a dangling pointer
+            std::weak_ptr<server::Game> weak_game = pp->app->server_manager.get_game(*pp->app, pp->get_invitation()).value_or(nullptr);
+            return wrap<GameHandle>(weak_game.lock().get());
+        }
+    }
     return wrap<GameHandle>(nullptr);
 }
 

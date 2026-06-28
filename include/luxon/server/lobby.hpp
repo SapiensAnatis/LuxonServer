@@ -21,6 +21,7 @@ namespace server {
 class App;
 struct Lobby;
 struct Game;
+struct LobbyInfo;
 
 struct GameListUpdateHandler {
     std::function<void(const std::shared_ptr<Game>&)> game_create;
@@ -51,7 +52,8 @@ struct Lobby : std::enable_shared_from_this<Lobby> {
     size_t get_peer_count() const;
     size_t get_master_peer_count() const;
 
-    void add_lobby_info(ser::ParameterList& params);
+    void add_lobby_info(ser::ParameterList& params) const;
+    LobbyInfo get_lobby_info() const;
 
     // Returns exceptions with user error strings!
     std::vector<std::string> query_lobbies(const std::string& sql_queries);

@@ -69,9 +69,6 @@
 #include <exception>
 #include <stdexcept>
 #include <algorithm>
-#ifdef LUXON_SERVER_MULTITHREADED
-#include <thread>
-#endif
 #include <luxon/common_codes.hpp>
 #include <luxon/ser_gp_binary_v18.hpp>
 #include <luxon/ser_encryption.hpp>
@@ -689,10 +686,10 @@ bool ServerManager::run_once() {
     return running_;
 }
 
-std::shared_ptr<App> ServerManager::get_app(const AppInfo& info) { return App::get(*this, std::string(info.app_id), std::string(info.app_version)); }
+std::shared_ptr<App> ServerManager::get_app(const AppInfo& info) { return App::get(*this, std::string(info.id), std::string(info.version)); }
 std::shared_ptr<Lobby> ServerManager::get_lobby(App& app, const LobbyInfo& info) { return app.get_lobby(info); }
 std::expected<std::shared_ptr<Game>, std::string> ServerManager::get_game(Lobby& lobby, const GameInfo& info) {
-    auto game = lobby.create_game(std::string(info.game_id), info.server_address, true);
+    auto game = lobby.create_game(std::string(info.id), info.server_address, true);
     if (!game)
         return std::unexpected(game.error().debug_message.value_or("Unknown error"));
     return *game;
@@ -783,13 +780,13 @@ void ServerManager::process_ipc_event(const ser::EventMessage& event_msg) {
             if (it != external_games_.end()) {
                 game = *it;
             } else {
-                auto app = App::get(*this, std::string(game_info.app_id), std::string(game_info.app_version));
+                auto app = App::get(*this, std::string(game_info.lobby.app.id), std::string(game_info.lobby.app.version));
                 if (!app) {
                     log_->error("Failed to synchronize game via IPC: Unable to get matching application");
                     return;
                 }
 
-                auto lobby = app->get_lobby({game_info.lobby_name, game_info.lobby_type});
+                auto lobby = app->get_lobby({game_info.lobby.name, game_info.lobby.type});
                 if (!lobby) {
                     log_->error("Failed to synchronize game via IPC: Unable to get matching lobby");
                     return;
@@ -803,7 +800,7 @@ void ServerManager::process_ipc_event(const ser::EventMessage& event_msg) {
                     return;
                 }
 
-                auto expected_game = lobby->create_game(std::string(game_info.game_id), address, true);
+                auto expected_game = lobby->create_game(std::string(game_info.id), address, true);
                 if (expected_game) {
                     game = std::move(expected_game.value());
                     if (game) {
@@ -830,12 +827,17 @@ void ServerManager::process_ipc_event(const ser::EventMessage& event_msg) {
                 game->insert_game_props(*props_ptr);
             }
 
+            if (is_new) {
+                log_->info("Resetting game ownership!");
+                reset_persistent_peer_game_ownership(*this, *game);
+            }
+
             return;
         }
     }
 
-    // Handle persistent peer stores/loads
-    if (event_msg.event_code == IPCEventCodes::PersistentPeerLoad || event_msg.event_code == IPCEventCodes::PersistentPeerStore) {
+    // Handle persistent peer stores
+    if (event_msg.event_code == IPCEventCodes::PersistentPeerStore) {
         // Get token
         std::string_view token;
         if (const auto& token_param = params[DictKeyCodes::LoadBalancing::Token]; token_param.is<std::string>()) {
@@ -845,40 +847,32 @@ void ServerManager::process_ipc_event(const ser::EventMessage& event_msg) {
             return;
         }
 
-        if (event_msg.event_code == IPCEventCodes::PersistentPeerStore) {
-            // Get user id
-            std::string_view user_id;
-            if (const auto& user_id_param = params[DictKeyCodes::LoadBalancing::UserId]; user_id_param.is<std::string>()) {
-                user_id = user_id_param.get<std::string>();
-            } else {
-                log_->error("Failed to decode persistent peer received via IPC: Could not get user id string");
-                return;
-            }
-
-            auto pp = create_persistent_peer();
-            pp->token = token;
-            pp->user_id = user_id;
-
-            const auto game_info = Game::decode_game_info(params);
-            pp->app = get_app(game_info);
-            if (!pp->app) {
-                log_->error("Failed to store persistent peer received via IPC: Could not get associated app");
-                return;
-            }
-
-            if (auto lobby = get_lobby(*pp->app, game_info))
-                pp->current_game = get_game(*lobby, game_info).value_or(nullptr);
-
-            store_persistent_peer(*this, std::move(pp));
-
-            return;
-        } else if (event_msg.event_code == IPCEventCodes::PersistentPeerLoad) {
-            auto pp = load_persistent_peer(*this, token, false);
-            if (!pp)
-                log_->warn("Received persistent peer load event via IPC for unknown user");
-
+        // Get user id
+        std::string_view user_id;
+        if (const auto& user_id_param = params[DictKeyCodes::LoadBalancing::UserId]; user_id_param.is<std::string>()) {
+            user_id = user_id_param.get<std::string>();
+        } else {
+            log_->error("Failed to decode persistent peer received via IPC: Could not get user id string");
             return;
         }
+
+        auto pp = create_persistent_peer();
+        pp->token = token;
+        pp->user_id = user_id;
+
+        const auto game_info = Game::decode_game_info(params);
+        pp->app = get_app(game_info.lobby.app);
+        if (!pp->app) {
+            log_->error("Failed to store persistent peer received via IPC: Could not get associated app");
+            return;
+        }
+
+        if (auto lobby = get_lobby(*pp->app, game_info.lobby))
+            pp->invite(game_info);
+
+        store_persistent_peer(*this, std::move(pp));
+
+        return;
     }
 }
 #endif
@@ -1003,6 +997,7 @@ void ServerManager::setup() {
 #ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
                 active_command_restarter_ = CommandRestarter::create(handler, cmd);
                 active_command_restarter_allowed_ = true;
+                inside_command_ = true;
 #endif
                 try {
                     handler->HandleENetCommand(std::move(cmd));
@@ -1011,10 +1006,12 @@ void ServerManager::setup() {
                     peer->disconnect();
                 }
 #ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
+                inside_command_ = false;
                 if (active_command_restarter_allowed_ && !should_abort_active_command()) {
                     peer->log->warn("Command did not commit!");
                     mark_command_committed();
                 }
+                active_command_restarter_.reset();
 #endif
             };
 

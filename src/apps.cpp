@@ -3,6 +3,8 @@
 
 #include "apps.hpp"
 #include "lobby.hpp"
+#include "game.hpp"
+#include "peer_persistence.hpp"
 #include "server_manager.hpp"
 #include "hookpoints.hpp"
 #include "string_hash.hpp"
@@ -13,6 +15,21 @@
 #include <luxon/common_codes.hpp>
 
 namespace server {
+void AppInfo::encode_app_info(ser::ParameterList& params) const {
+    if (has_app_info()) {
+        params[DictKeyCodes::LoadBalancing::ApplicationId] = std::string(id);
+        params[DictKeyCodes::LoadBalancing::AppVersion] = std::string(version);
+    }
+}
+
+void LobbyInfo::encode_lobby_info(ser::ParameterList& params) const {
+    if (has_lobby_info()) {
+        params[DictKeyCodes::AuthAndLobby::LobbyName] = std::string(name);
+        params[DictKeyCodes::AuthAndLobby::LobbyType] = type;
+    }
+    app.encode_app_info(params);
+}
+
 size_t LobbyIdHash::operator()(const LobbyId& k) const noexcept {
     std::size_t h1 = std::hash<std::string_view>{}(k.first);
     std::size_t h2 = std::hash<unsigned>{}(k.second); // avoid uint8_t quirks
@@ -74,9 +91,16 @@ size_t App::get_peer_count() const {
     return fres;
 }
 
-void App::add_app_info(ser::ParameterList& params) {
+void App::add_app_info(ser::ParameterList& params) const {
     params[DictKeyCodes::LoadBalancing::ApplicationId] = std::string(id);
     params[DictKeyCodes::LoadBalancing::AppVersion] = std::string(version);
+}
+
+AppInfo App::get_app_info() const {
+    AppInfo fres;
+    fres.id = id;
+    fres.version = version;
+    return fres;
 }
 
 std::shared_ptr<Lobby> App::get_lobby(LobbyId id) {
@@ -138,9 +162,9 @@ AppInfo App::decode_app_info(const ser::ParameterList& params) {
     AppInfo fres;
     for (const auto& [key, val] : params) {
         if (key == DictKeyCodes::LoadBalancing::ApplicationId)
-            fres.app_id = val.get<std::string>();
+            fres.id = val.get<std::string>();
         if (key == DictKeyCodes::LoadBalancing::AppVersion)
-            fres.app_version = val.get<std::string>();
+            fres.version = val.get<std::string>();
     }
     return fres;
 }

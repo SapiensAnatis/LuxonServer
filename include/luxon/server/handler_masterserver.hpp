@@ -5,9 +5,11 @@
 
 #include "global.hpp"
 #include "handler_base.hpp"
+#include "lobby.hpp"
 
 #include <unordered_set>
 #include <functional>
+#include <list>
 #include <optional>
 #include <commoncpp/timer.hpp>
 #include <luxon/ser_types.hpp>

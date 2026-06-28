@@ -132,6 +132,8 @@ FFI_FUNCTION(void, peerDisconnect, (PeerHandle peer), peer)
 FFI_FUNCTION(const char *, peerGetUserId, (PeerHandle peer), peer)
 /** @brief Gets the handle of the Game the peer is currently residing in */
 FFI_FUNCTION(GameHandle, peerGetCurrentGame, (PeerHandle peer), peer)
+/** @brief Gets the handle of the Game the peer is invited to join */
+FFI_FUNCTION(GameHandle, peerGetInvitedGame, (PeerHandle peer), peer)
 
 /* --- GAME PEER INTERFACE --- */
 

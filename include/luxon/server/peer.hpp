@@ -5,7 +5,6 @@
 
 #include "global.hpp"
 #include "logger.hpp"
-#include "peer_persistence.hpp"
 
 #include <memory>
 #include <luxon/enet_peer.hpp>
@@ -14,6 +13,7 @@
 
 namespace server {
 struct PeerPersistent;
+struct Game;
 
 struct Peer {
     std::unique_ptr<ser::IProtocol> protocol;
