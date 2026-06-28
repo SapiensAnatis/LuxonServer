@@ -72,8 +72,7 @@ std::unique_ptr<PeerPersistent> create_persistent_peer() {
 void reset_persistent_peer_game_ownership(ServerManager& server_manager, Game& game) {
     for (const auto& peer : server_manager.peer_persistent_data) {
         if (peer->owns(game)) {
-            peer->reset_game();
-            create_logger("PP")->info("GAME OWNERSHIP RESET OK!");
+            peer->reset_owned_game();
             return; // No more than one peer should ever own a game
         }
     }

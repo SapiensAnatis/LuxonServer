@@ -25,16 +25,19 @@ public:
     std::shared_ptr<App> app;
     std::string user_id, token;
 
-    void reset_game() {
+    void reset_invitation() {
         invitation = {};
         invitation_buf.clear();
-        owned_game.reset();
+    }
+    void reset_owned_game() { owned_game.reset(); }
+    void reset_game() {
+        reset_invitation();
+        reset_owned_game();
     }
 
     const GameInfo& get_invitation() const { return invitation; }
     bool has_invitation() const { return invitation.has_game_info(); }
     bool owns(Game& game) const {
-        create_logger("PP")->info("GAME OWNERSHIP RESET: {} vs. {}", reinterpret_cast<void *>(owned_game.get()), reinterpret_cast<void *>(&game));
         return owned_game.get() == &game;
     }
     void reset_owned_game_if_created() {
