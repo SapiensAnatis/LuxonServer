@@ -1011,7 +1011,7 @@ void ServerManager::setup() {
                     peer->disconnect();
                 }
 #ifdef LUXON_SERVER_ENABLE_COMMAND_RESTARTER
-                if (active_command_restarter_allowed_) {
+                if (active_command_restarter_allowed_ && !should_abort_active_command()) {
                     peer->log->warn("Command did not commit!");
                     mark_command_committed();
                 }
