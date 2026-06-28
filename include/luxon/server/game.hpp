@@ -244,6 +244,13 @@ struct Game : std::enable_shared_from_this<Game> {
     /// \return True if expectation is met, otherwise false
     ///
     bool expect_actor_props(int32_t actor_id, const ser::Hashtable& expected);
+    /// \brief Generates property update event for network distribution
+    ///
+    /// \param actor_id ID of the actor initiating the update (use 0 if update is triggered by server logic)
+    /// \param props A collection of key/value pairs representing the properties to be updated on clients
+    /// \param target_actor_id ID of specific actor whose properties are being modified, pass 0 to target global game properties instead of a specific actor
+    /// \return A constructed Event object ready to be broadcasted to clients
+    Event create_property_update_event(int32_t actor_id, ser::Hashtable props, int32_t target_actor_id = 0);
 
 #ifdef LUXON_SERVER_ENABLE_PLUGINS
     template <typename InfoStruct>

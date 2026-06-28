@@ -596,12 +596,7 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
 
             // Broadcast property updates
             if (ok && broadcast) {
-                Event event{.code = EventCodes::PropertiesUpdate,
-                            .sender_actor_id = game_peer_->actor_id,
-                            .receivers = (game->flags & GameFlags::BroadcastPropsChangeToAll) ? ReceiverGroup::All : ReceiverGroup::Others};
-                if (actor_id)
-                    event.top_params[DictKeyCodes::GameAndActor::TargetActorNo] = actor_id;
-                event.top_params[DictKeyCodes::Properties::Properties] = *props;
+                auto event = game->create_property_update_event(game_peer_->actor_id, *props, actor_id);
                 game->broadcast_event(event);
             }
 

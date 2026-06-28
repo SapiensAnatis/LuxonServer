@@ -274,11 +274,11 @@ FFI_FUNCTION(void, gameGetGameProps, (GameHandle game, bool no_custom, SerValueH
 /** @brief Generates a hashtable of all properties bound to users */
 FFI_FUNCTION(void, gameGetActorProps, (GameHandle game, SerValueHandle out_hashtable), game, out_hashtable)
 /** @brief Updates the properties dictionary of the game */
-FFI_FUNCTION(void, gameInsertGameProps, (GameHandle game, SerValueHandle update), game, update)
+FFI_FUNCTION(void, gameInsertGameProps, (GameHandle game, SerValueHandle update, bool broadcast), game, update, broadcast)
 /** @brief Performs Compare And Swap validations on game properties */
 FFI_FUNCTION(bool, gameExpectGameProps, (GameHandle game, SerValueHandle expected), game, expected)
 /** @brief Updates the properties of a specific Actor */
-FFI_FUNCTION(bool, gameInsertActorProps, (GameHandle game, int32_t actor_id, SerValueHandle update), game, actor_id, update)
+FFI_FUNCTION(bool, gameInsertActorProps, (GameHandle game, int32_t actor_id, SerValueHandle update, bool broadcast), game, actor_id, update, broadcast)
 /** @brief Performs Compare And Swap validations on Actor properties */
 FFI_FUNCTION(bool, gameExpectActorProps, (GameHandle game, int32_t actor_id, SerValueHandle expected), game, actor_id, expected)
 /** @brief Used for Matchmaking to check if properties match an arbitrary filter */

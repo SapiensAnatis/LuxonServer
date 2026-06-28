@@ -557,6 +557,16 @@ bool Game::expect_actor_props(int32_t actor_id, const ser::Hashtable& expected) 
     return true;
 }
 
+Event Game::create_property_update_event(int32_t actor_id, ser::Hashtable props, int32_t target_actor_id) {
+    Event event{.code = EventCodes::PropertiesUpdate,
+                .sender_actor_id = actor_id,
+                .receivers = (flags & GameFlags::BroadcastPropsChangeToAll) ? ReceiverGroup::All : ReceiverGroup::Others};
+    if (target_actor_id)
+        event.top_params[DictKeyCodes::GameAndActor::TargetActorNo] = target_actor_id;
+    event.top_params[DictKeyCodes::Properties::Properties] = std::move(props);
+    return event;
+}
+
 bool Game::matches_filter(const ser::Value& event_data, const ser::Hashtable& filter) {
     ZoneScoped;
 

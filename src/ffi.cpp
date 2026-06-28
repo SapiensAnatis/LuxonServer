@@ -1288,7 +1288,7 @@ void gameGetActorProps(GameHandle game, SerValueHandle out_hashtable) {
     });
 }
 
-void gameInsertGameProps(GameHandle game, SerValueHandle update) {
+void gameInsertGameProps(GameHandle game, SerValueHandle update, bool broadcast) {
     if (!update)
         return;
     ffi_safe_exec([=] {
@@ -1297,6 +1297,10 @@ void gameInsertGameProps(GameHandle game, SerValueHandle update) {
             if (v->is<luxon::ser::HashtablePtr>()) {
                 if (auto ptr = v->get<luxon::ser::HashtablePtr>()) {
                     g->insert_game_props(*ptr);
+                    if (broadcast) {
+                        auto event = g->create_property_update_event(0, *ptr);
+                        g->broadcast_event(event);
+                    }
                 }
             }
         }
@@ -1318,7 +1322,7 @@ bool gameExpectGameProps(GameHandle game, SerValueHandle expected) {
     });
 }
 
-bool gameInsertActorProps(GameHandle game, int32_t actor_id, SerValueHandle update) {
+bool gameInsertActorProps(GameHandle game, int32_t actor_id, SerValueHandle update, bool broadcast) {
     if (!update)
         return false;
     return ffi_safe_call<bool>(false, [=] {
@@ -1326,7 +1330,14 @@ bool gameInsertActorProps(GameHandle game, int32_t actor_id, SerValueHandle upda
         auto *v = unwrap<luxon::ser::Value>(update);
         if (g && v->is<luxon::ser::HashtablePtr>()) {
             if (auto ptr = v->get<luxon::ser::HashtablePtr>()) {
-                return g->insert_actor_props(actor_id, *ptr);
+                if (g->insert_actor_props(actor_id, *ptr)) {
+                    if (broadcast) {
+                        auto event = g->create_property_update_event(0, *ptr, actor_id);
+                        g->broadcast_event(event);
+                    }
+                    return true;
+                }
+                return false;
             }
         }
         return false;
