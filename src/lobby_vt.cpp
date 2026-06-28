@@ -55,8 +55,8 @@ static int vtConnect(sqlite3 *db, void *pAux, int /*argc*/, const char *const * 
 
         int rc = sqlite3_declare_vtab(db, "CREATE TABLE x("
                                           "__id TEXT, "
-                                          "C0 TEXT, C1 TEXT, C2 TEXT, C3 TEXT, C4 TEXT, "
-                                          "C5 TEXT, C6 TEXT, C7 TEXT, C8 TEXT, C9 TEXT"
+                                          "C0 COLLATE NOCASE, C1 COLLATE NOCASE, C2 COLLATE NOCASE, C3 COLLATE NOCASE, C4 COLLATE NOCASE, "
+                                          "C5 COLLATE NOCASE, C6 COLLATE NOCASE, C7 COLLATE NOCASE, C8 COLLATE NOCASE, C9 COLLATE NOCASE"
                                           ");");
         if (rc != SQLITE_OK) {
             if (pzErr)
@@ -268,6 +268,8 @@ static int vtFilter(sqlite3_vtab_cursor *cur, int idxNum, const char *idxStr, in
                     const auto& val = it->second;
                     if (val.is<std::string>())
                         actual_str = val.get<std::string>();
+                    else if (val.is<bool>())
+                        actual_str = val.get<bool>() ? "1" : "0";
                     else if (val.is<int32_t>())
                         actual_str = std::to_string(val.get<int32_t>());
                     else if (val.is<int64_t>())
@@ -284,7 +286,7 @@ static int vtFilter(sqlite3_vtab_cursor *cur, int idxNum, const char *idxStr, in
                 }
 
                 if (prop.op == '=') {
-                    if (actual_str != prop.val)
+                    if (sqlite3_stricmp(actual_str.c_str(), prop.val.c_str()) != 0)
                         return false;
                 } else if (prop.op == 'L') {
                     if (sqlite3_strlike(prop.val.c_str(), actual_str.c_str(), 0) != 0)
@@ -365,26 +367,24 @@ static int vtColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx, int i) {
                     sqlite3_result_text(ctx, s.c_str(), -1, SQLITE_TRANSIENT);
                     return SQLITE_OK;
                 }
-
-                // Table schema exposes these columns as TEXT, stringify numerics
+                if (val.is<bool>()) {
+                    sqlite3_result_int(ctx, val.get<bool>());
+                    return SQLITE_OK;
+                }
                 if (val.is<int32_t>()) {
-                    const std::string str_val = std::to_string(val.get<int32_t>());
-                    sqlite3_result_text(ctx, str_val.c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_result_int(ctx, val.get<int32_t>());
                     return SQLITE_OK;
                 }
                 if (val.is<int64_t>()) {
-                    const std::string str_val = std::to_string(val.get<int64_t>());
-                    sqlite3_result_text(ctx, str_val.c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_result_int64(ctx, val.get<int64_t>());
                     return SQLITE_OK;
                 }
                 if (val.is<int16_t>()) {
-                    const std::string str_val = std::to_string(val.get<int16_t>());
-                    sqlite3_result_text(ctx, str_val.c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_result_int(ctx, val.get<int16_t>());
                     return SQLITE_OK;
                 }
                 if (val.is<uint8_t>()) {
-                    const std::string str_val = std::to_string(val.get<uint8_t>());
-                    sqlite3_result_text(ctx, str_val.c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_result_int(ctx, val.get<uint8_t>());
                     return SQLITE_OK;
                 }
 
