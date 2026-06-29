@@ -451,7 +451,8 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
 
                 if (res == Result::Fail) {
                     peer_->log->info("Reverting join", game->id);
-                    peer_->disconnect();
+                    game->remove_peer(peer_);
+                    game_peer_ = nullptr;
 
                     const ser::OperationResponseMessage resp{.operation_code = req.operation_code, .return_code = ErrorCodes::Matchmaking::PluginReportedError};
                     send(proto_->Serialize(resp));
