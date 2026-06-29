@@ -68,7 +68,7 @@ std::expected<ser::ByteArray, ser::Error> Event::get_cached_data(ser::IProtocol&
 Game::~Game() {
     // Call into plugins
     GAME_PLUGINS_INVOKE({
-        OnCloseGameCallInfo info{.failed_on_create = last_actor_id == 0};
+        OnCloseGameCallInfo info{.failed_on_create = !is_created};
         execute_plugin_chain(&PluginBase::OnCloseGame, info);
     });
 
@@ -220,7 +220,7 @@ restart:
 
         // Call into plugins
         GAME_PLUGINS_INVOKE({
-            BeforeCloseGameCallInfo info{.failed_on_create = last_actor_id == 0};
+            BeforeCloseGameCallInfo info{.failed_on_create = !is_created};
             execute_plugin_chain(&PluginBase::BeforeCloseGame, info);
         })
         true;
