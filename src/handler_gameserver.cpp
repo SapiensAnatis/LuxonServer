@@ -388,16 +388,15 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                 }
             });
 
-            // No turning back
-            if (!server_manager_.mark_command_committed())
-                return;
+            if (is_master) {
+                // No turning back
+                if (!server_manager_.mark_command_committed())
+                    return;
 
-            // Mark game as created
-            if (is_master)
+                // Mark game as created
                 game->is_created = true;
 
-            // Apply game settings
-            if (is_master) {
+                // Apply game settings
                 if (auto player_ttl = params->get<DictKeyCodes::GameSettings::PlayerTTL>())
                     game->player_ttl = *player_ttl;
                 if (auto empty_room_ttl = params->get<DictKeyCodes::GameSettings::EmptyRoomTTL>())
@@ -431,6 +430,19 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
                 return;
             }
 
+            // No turning back
+            if (!server_manager_.mark_command_committed())
+                return;
+
+            // Add peer to game
+            game_peer_ = game->add_peer(std::move(game_peer));
+            if (!game_peer_) {
+                peer_->log->error("Player could not be added to game. Connection must terminate now.");
+                peer_->disconnect();
+                return;
+            }
+            peer_->log->info("Successfully joined game: {}", game->id);
+
             // Call into plugins
             bool broadcast_actor_props = true;
             GAME_PLUGINS_INVOKE({
@@ -451,15 +463,6 @@ void GameServerHandler::HandleOperationRequest(ser::OperationRequestMessage&& re
 
                 broadcast_actor_props = info.broadcast_actor_props.value_or(true);
             });
-
-            // Add peer to game
-            game_peer_ = game->add_peer(std::move(game_peer));
-            if (!game_peer_) {
-                peer_->log->error("Player could not be added to game. Connection must terminate now.");
-                peer_->disconnect();
-                return;
-            }
-            peer_->log->info("Successfully joined game: {}", game->id);
 
             // Update properties
             if (const auto& actor_props = params->get<DictKeyCodes::Properties::ActorProperties>())

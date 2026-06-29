@@ -164,6 +164,9 @@ endif()
 add_executable(luxon_server src/main.cpp)
 target_link_libraries(luxon_server luxon_server_lib)
 
+add_executable(luxon_server_test test_client.cpp)
+target_link_libraries(luxon_server_test luxon_enet luxon_ser luxon_visualizer)
+
 if (LUXON_SERVER_BUILD_FFI)
     if (NOT WASI)
         add_library(luxon_server_ffi SHARED)
